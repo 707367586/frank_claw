@@ -1,0 +1,10 @@
+[package]
+name = "clawx-ota"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clawx-types = { workspace = true }
+clawx-hal = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

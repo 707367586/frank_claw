@@ -1,0 +1,18 @@
+[package]
+name = "clawx-runtime"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clawx-types = { workspace = true }
+clawx-llm = { workspace = true }
+clawx-memory = { workspace = true }
+clawx-security = { workspace = true }
+clawx-eventbus = { workspace = true }
+clawx-vault = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }

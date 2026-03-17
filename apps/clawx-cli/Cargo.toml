@@ -1,0 +1,17 @@
+[package]
+name = "clawx-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "clawx"
+path = "src/main.rs"
+
+[dependencies]
+clawx-types = { workspace = true }
+clawx-runtime = { workspace = true }
+clawx-config = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }

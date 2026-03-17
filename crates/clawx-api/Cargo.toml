@@ -1,0 +1,12 @@
+[package]
+name = "clawx-api"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clawx-types = { workspace = true }
+clawx-runtime = { workspace = true }
+clawx-gateway = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+tracing = { workspace = true }

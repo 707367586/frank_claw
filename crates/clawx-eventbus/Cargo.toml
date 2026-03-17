@@ -1,0 +1,10 @@
+[package]
+name = "clawx-eventbus"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clawx-types = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }

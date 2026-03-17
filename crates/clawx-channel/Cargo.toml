@@ -1,0 +1,11 @@
+[package]
+name = "clawx-channel"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clawx-types = { workspace = true }
+clawx-eventbus = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }

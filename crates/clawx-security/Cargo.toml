@@ -1,0 +1,14 @@
+[package]
+name = "clawx-security"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clawx-types = { workspace = true }
+clawx-config = { workspace = true }
+clawx-eventbus = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+regex = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }

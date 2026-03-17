@@ -1,0 +1,92 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/clawx-types",
+    "crates/clawx-config",
+    "crates/clawx-eventbus",
+    "crates/clawx-llm",
+    "crates/clawx-runtime",
+    "crates/clawx-memory",
+    "crates/clawx-kb",
+    "crates/clawx-security",
+    "crates/clawx-vault",
+    "crates/clawx-skills",
+    "crates/clawx-scheduler",
+    "crates/clawx-channel",
+    "crates/clawx-gateway",
+    "crates/clawx-artifact",
+    "crates/clawx-hal",
+    "crates/clawx-daemon",
+    "crates/clawx-ota",
+    "crates/clawx-api",
+    "crates/clawx-ffi",
+    "apps/clawx-cli",
+    "apps/clawx-service",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.80"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# HTTP
+axum = "0.8"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Regex (DLP scanning)
+regex = "1"
+
+# Internal crates
+clawx-types = { path = "crates/clawx-types" }
+clawx-config = { path = "crates/clawx-config" }
+clawx-eventbus = { path = "crates/clawx-eventbus" }
+clawx-llm = { path = "crates/clawx-llm" }
+clawx-runtime = { path = "crates/clawx-runtime" }
+clawx-memory = { path = "crates/clawx-memory" }
+clawx-kb = { path = "crates/clawx-kb" }
+clawx-security = { path = "crates/clawx-security" }
+clawx-vault = { path = "crates/clawx-vault" }
+clawx-skills = { path = "crates/clawx-skills" }
+clawx-scheduler = { path = "crates/clawx-scheduler" }
+clawx-channel = { path = "crates/clawx-channel" }
+clawx-gateway = { path = "crates/clawx-gateway" }
+clawx-artifact = { path = "crates/clawx-artifact" }
+clawx-hal = { path = "crates/clawx-hal" }
+clawx-daemon = { path = "crates/clawx-daemon" }
+clawx-ota = { path = "crates/clawx-ota" }
+clawx-api = { path = "crates/clawx-api" }
+clawx-ffi = { path = "crates/clawx-ffi" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

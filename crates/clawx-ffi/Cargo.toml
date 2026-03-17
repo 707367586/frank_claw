@@ -1,0 +1,10 @@
+[package]
+name = "clawx-ffi"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clawx-types = { workspace = true }
+clawx-runtime = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
