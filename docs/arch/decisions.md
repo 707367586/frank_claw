@@ -266,68 +266,81 @@
 
 ---
 
-## ADR-014: 三层记忆架构 (Working + Short-Term + Long-Term)
+## ADR-014: 四层记忆架构 (Working + Short-Term + Long-Term + Reflection)
 
-**状态:** 已采纳
+**状态:** 已采纳 (v2.0 更新，原三层升级为四层)
 
-**背景:** PRD 定义了两层作用域 (Agent/User)，但从认知科学角度，记忆系统还需要短期缓冲和上下文管理能力。
+**背景:** 调研 MemGPT/Letta、Mem0、Zep/Graphiti、CrewAI、Generative Agents 等业界方案后发现：
+- Mem0/Zep/CrewAI 均将实体记忆作为核心组件，ClawX 原设计缺少实体追踪
+- Generative Agents (Park et al.) 的周期性反思机制是该论文最重要贡献之一
+- MAGMA 的四图架构在推理准确率上提升 45.5%
 
-**决策:** 采用三层记忆架构：
-- **Working Memory**：当前对话的上下文窗口管理（纯内存，不持久化）
-- **Short-Term Memory**：Session 级缓冲（内存 + SQLite 临时表）
-- **Long-Term Memory**：持久化存储，按作用域分为 Agent Memory（私有）和 User Memory（全局共享）
+**决策:** 升级为四层记忆架构：
+- **Working Memory**：上下文窗口管理 + 递归摘要压缩 (参考 MemGPT)
+- **Short-Term Memory**：Session 级缓冲 + 晋升评估
+- **Long-Term Memory**：持久化存储，含三个子类型：
+  - Agent Memory (私有) + User Memory (共享) + **Entity Memory (实体与关系)**
+- **Reflection** [v0.2]：周期性高阶反思 + 失败经验学习 (参考 Generative Agents + Reflexion)
 
 **替代方案:**
-- 仅两层 (Working + Long-Term)：缺少 Session 级缓冲，跨对话信息延续困难
-- 四层 (增加 Episodic Memory)：过度设计，v1 阶段不需要
+- 仅三层 (无实体/反思)：缺少结构化关系追踪和认知升华能力
+- MAGMA 四图架构：效果最佳但复杂度极高，不适合嵌入式本地应用
+- Zep/Graphiti 时序知识图谱：需要图数据库，违背零运维原则
 
 **理由:**
-- Working Memory 解决 LLM 上下文窗口限制问题
-- Short-Term Memory 解决跨对话但同一 Session 内的信息延续问题
-- Long-Term Memory 实现 PRD 要求的持久化两层记忆
-- 三层架构与人类记忆工作方式类比，提取和晋升机制更自然
+- Entity Memory 用 SQLite 关系表实现，保持嵌入式架构，覆盖 80% 实体关系场景
+- Reflection 在 v0.2 引入，此时已有足够记忆量支撑有效反思
+- 四层架构比三层更完整，但不引入图数据库，避免过度工程化
 
 **详细设计:** 见 [memory-architecture.md](./memory-architecture.md)
 
 ---
 
-## ADR-015: 记忆提取采用 LLM 辅助而非规则引擎
+## ADR-015: 记忆提取 LLM 辅助 + Agent 自主双轨制
 
-**状态:** 已采纳
+**状态:** 已采纳 (v2.0 更新，新增 Agent 自主管理)
 
-**背景:** 从对话中提取值得记忆的信息，可以用规则引擎或 LLM。
+**背景:** 调研发现 MemGPT/Letta 的核心创新是让 Agent 通过函数调用自行管理记忆 (self-directed memory)，效果最佳但每次操作消耗 LLM 推理。
 
-**决策:** 以 LLM 辅助提取为主，信号词规则检测为辅助触发器。每 3 轮对话触发一次隐式提取，检测到关键信号词时立即触发。
+**决策:** 双轨制：
+- v0.1：系统自动提取为主 (LLM 辅助隐式提取 + 信号词触发)
+- v0.2：新增 MemGPT 风格 Agent Memory Tools (memory_save/search/update/entity_lookup)
 
 **替代方案:**
 - 纯规则引擎：无法理解语义，漏提严重
-- 每轮都调 LLM：Token 开销过大
-- 用户手动记忆：体验差，违背"主动融入"原则
+- 纯 MemGPT 自主管理：每次操作消耗 LLM 推理，v0.1 开销过大
+- 每轮都调 LLM：Token 开销不可控
 
 **理由:**
-- LLM 能理解对话语义，提取质量显著高于规则
-- 通过频率控制和信号词触发平衡 LLM 调用开销
-- 异步执行不阻塞用户响应
+- 系统自动提取保底不遗漏
+- Agent 自主管理提升主动性和精准度
+- Agent 通过 Tool 主动存储的记忆优先级高于系统隐式提取
 
 ---
 
-## ADR-016: SQLite 为记忆 Source of Truth，Qdrant 为检索加速
+## ADR-016: SQLite SoT + 三路混合检索 (向量 + BM25 + 实体)
 
-**状态:** 已采纳
+**状态:** 已采纳 (v2.0 更新，从双路升级为三路)
 
-**背景:** 记忆需要同时存储在 SQLite（结构化查询）和 Qdrant（向量语义检索）。需要明确主从关系。
+**背景:** 业界共识 dense + sparse 混合检索显著优于单一方案。ClawX 已有 Tantivy 引擎 (知识库模块可复用)。新增的 Entity Memory 提供结构化关系检索能力。
 
-**决策:** SQLite 为 Source of Truth，Qdrant 为可重建的检索索引。写入时双写；Qdrant 数据丢失时可从 SQLite 重建。
+**决策:** 三路并行检索 + RRF 融合：
+1. Qdrant 向量语义检索
+2. Tantivy BM25 关键词检索 (复用已有基础设施)
+3. Entity 实体关系检索 (SQLite 关系查询)
+4. RRF (Reciprocal Rank Fusion) 融合排序
+
+SQLite 为 Source of Truth，Qdrant/Tantivy 均为可重建索引。
 
 **替代方案:**
-- Qdrant 为 Source of Truth：Qdrant 嵌入式模式稳定性不如 SQLite，缺少事务保证
-- 仅用 SQLite（不用 Qdrant）：无法实现高效语义检索
+- 仅向量检索：关键词精确匹配差 (如人名"张三")
+- 仅 BM25：缺乏语义理解
+- 全文 Graphiti 图检索：需要图数据库
 
 **理由:**
-- SQLite 提供 ACID 事务保证和结构化查询
-- Qdrant 嵌入式模式下数据可能因异常损坏
-- 重建成本可控（10K 条目重建 Embedding 约 5-10 分钟）
-- SQLite 备份/迁移更简单（单文件）
+- 三路检索在中英混合场景下 Top-5 hit rate 提升 >= 5 个百分点
+- Tantivy 复用知识库已有引擎，零额外基础设施成本
+- 实体关系检索解决 "张三在 Project X 做什么" 类查询
 
 ---
 
@@ -439,3 +452,58 @@
 - 降低第三方开发者为 ClawX 开发工具的门槛
 - 不替代 WASM Skills，而是作为互补的工具接入方式
 - v0.2 阶段实现，与 Skills 本地管理同期交付
+
+---
+
+## ADR-021: 轻量级实体记忆 (SQLite 关系表，非图数据库)
+
+**状态:** 已采纳
+
+**背景:** 调研发现实体与关系追踪是当前 Agent 记忆系统的重要趋势：
+- Zep 使用时序知识图谱 (Graphiti)，DMR 基准准确率 94.8%
+- Mem0 的图记忆 ($24M 融资) 通过 vector + graph + KV 混合架构实现
+- MAGMA 的四图架构 (语义/时序/因果/实体) 推理准确率提升 45.5%
+- CrewAI 将 Entity Memory 作为四类记忆之一
+
+**决策:** v1 使用 SQLite `entities` + `entity_relations` 表实现实体记忆，不引入 Neo4j 等图数据库。实体提取复用记忆提取的 LLM 调用（同一次 Prompt 同时提取记忆和实体）。
+
+**替代方案:**
+- Graphiti/Neo4j 时序知识图谱：效果最佳但需要独立图数据库进程，违背嵌入式本地优先
+- 纯向量 (无实体)：AutoGPT 方案，"张三在 Project X 做什么" 类查询效果差
+- 完整 MAGMA 四图：过度工程化，v1 单用户场景不需要因果图
+
+**理由:**
+- SQLite 关系表覆盖 80% 实体关系场景 (一跳查询 + 简单多跳)
+- 保持零运维嵌入式架构，不增加运维复杂度
+- 实体提取与记忆提取同步进行，无额外 LLM 调用开销
+- v2 可在需要时升级为 SQLite + 轻量图索引
+
+---
+
+## ADR-022: 记忆冲突解决采用 LLM 辅助分类 + 版本化保留
+
+**状态:** 已采纳
+
+**背景:** 调研发现 Last-Write-Wins 是业界最弱的冲突解决方案：
+- Mem0 的 active curation 通过 LLM 分类冲突类型并智能处理，标记旧值为 inactive
+- Zep 的时序版本化维护事实的时间有效性
+- 大多数系统的冲突解决仍是开放问题，但至少需要版本化保留
+
+**决策:** 当新记忆与已有记忆语义相似度在 0.7-0.92 区间时，调用 LLM 分类冲突类型：
+- DUPLICATE：去重，保留已有
+- UPDATE：更新已有记忆，旧版本存入 `memory_versions` 表
+- CONTRADICTION：按重要性处理（< 8 自动替代，>= 8 请求用户确认）
+- RELATED：两条均保留
+- UNRELATED：存储为新记忆
+
+所有被替代的旧版本保留在 `memory_versions` 表，支持回溯和审计。
+
+**替代方案:**
+- Last-Write-Wins：最简单但容易丢失正确信息
+- 全部保留 (append-only)：不解决矛盾，检索时噪声大
+- 用户手动解决所有冲突：体验差，频繁打断
+
+**理由:**
+- LLM 分类比固定规则更准确，能区分"更新"和"矛盾"
+- 版本化保留支持审计和回溯
+- 高重要性冲突由用户裁决，避免自动化误判造成信息损失

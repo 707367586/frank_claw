@@ -15,8 +15,8 @@
 | [data-model.md](./data-model.md) | **数据模型与存储架构** — SQLite 表结构、Qdrant 向量设计、文件系统布局 | 3 |
 | [security-architecture.md](./security-architecture.md) | **安全架构 (v4.0)** — 12 层纵深防御、WASM 双计量沙箱、宿主边界凭证注入、SSRF 防护、密钥零化、泄漏检测 | 4 |
 | [api-design.md](./api-design.md) | **API 设计** — RESTful 端点、FFI 接口、Cloud Relay API | 5 |
-| [memory-architecture.md](./memory-architecture.md) | **记忆系统架构** — 三层记忆模型、提取/召回/衰减流水线、存储设计 | 6 |
-| [decisions.md](./decisions.md) | **架构决策记录 (ADR)** — 20 项关键技术决策及理由 | 7 |
+| [memory-architecture.md](./memory-architecture.md) | **记忆系统架构 (v2.0)** — 四层记忆模型、实体记忆、混合检索、反思机制、冲突解决、竞品调研 | 6 |
+| [decisions.md](./decisions.md) | **架构决策记录 (ADR)** — 22 项关键技术决策及理由 | 7 |
 
 ## 快速导航
 
