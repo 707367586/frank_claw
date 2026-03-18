@@ -115,7 +115,7 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 
 | Crate | 职责 | 详细设计 |
 |-------|------|---------|
-| **clawx-memory** | 持久化记忆系统（Short-Term/Long-Term），语义召回与衰减 | [memory-architecture.md](./memory-architecture.md) |
+| **clawx-memory** | 持久化记忆系统：v0.1 Long-Term (Agent/User Memory)，v0.2 +Short-Term；语义召回与衰减 | [memory-architecture.md](./memory-architecture.md) |
 | **clawx-kb** | 知识库引擎：FSEvents 监控、多格式解析、混合检索 | — |
 | **clawx-skills** | Skills 执行引擎、WASM 沙箱、MCP 客户端（v0.2） | — |
 | **clawx-ota** | OTA 远程更新、Ed25519 签名验证（v0.3+） | — |
@@ -229,9 +229,9 @@ Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓
 
 | 阶段 | 核心模块 |
 |------|---------|
-| **v0.1** | types, config, llm, runtime, memory, kb, vault, security(7层基线), controlplane-client, ffi, api, service, cli |
-| **v0.2** | skills, scheduler, channel, security(完整12层), eventbus, MCP, 自主性能力(ReAct/反思/信任) |
-| **v0.3+** | artifact, ota, hal(完整), 账号/同步, Cloud Relay, 移动端, 多Agent协作, Computer Use |
+| **v0.1** | types, config, hal(基础FSEvents/Keychain), llm, runtime, memory(Long-Term), kb, vault, security(7层基线), controlplane-client, ffi, api, service, cli |
+| **v0.2** | skills, scheduler, channel, security(完整12层), eventbus, MCP, memory(+Short-Term), 自主性能力(ReAct/反思/信任) |
+| **v0.3+** | artifact, ota, hal(+Notification/pf完整), 账号/同步, Cloud Relay, 移动端, 多Agent协作, Computer Use |
 | **v1.0+** | HireClaw 社区、商业化 |
 
 ---

@@ -10,10 +10,11 @@
 
 | 存储引擎 | 用途 | 数据类型 |
 |---------|------|---------|
-| **SQLite** | 主数据库 | Agent 配置、对话、记忆、任务、审计 |
+| **SQLite** | 主数据库 | Agent 配置、对话、记忆、任务、记忆变更审计 (memory_audit_log) |
 | **Qdrant (embedded)** | 向量索引 | 文档 Embedding 向量 |
 | **Tantivy** | 全文索引 | BM25 倒排索引 |
 | **文件系统** | 工作区/产物 | 用户文件、Agent 产物、版本点 |
+| **JSONL 文件** | 安全审计日志 | SHA-256 哈希链审计记录 (`~/.clawx/audit/`, L12) |
 | **macOS Keychain** | 密钥存储 | API Key、Token、加密密钥 |
 
 ---

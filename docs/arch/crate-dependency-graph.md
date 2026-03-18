@@ -65,7 +65,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 ```
 依赖: clawx-types
 外部: tokio, async-trait, tracing
-被依赖: clawx-kb, clawx-ota
+被依赖: clawx-security, clawx-kb, clawx-ota
 说明: 封装 FSEvents/Keychain/Notification 等 macOS 宿主能力 (ADR-019)
 ```
 
@@ -78,9 +78,10 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 
 ### clawx-security (Layer 2)
 ```
-依赖: clawx-types, clawx-config, clawx-eventbus
+依赖: clawx-types, clawx-config, clawx-eventbus, clawx-hal
 外部: tokio, async-trait, regex, tracing, chrono
 被依赖: clawx-skills, clawx-runtime
+说明: 通过 clawx-hal 访问 Keychain 实现 L3 凭证注入 (ADR-016, ADR-019)
 ```
 
 ### clawx-vault (Layer 2)
@@ -119,7 +120,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 依赖: clawx-types, clawx-llm, clawx-eventbus
 外部: tokio, async-trait, sqlx, serde, serde_json, tracing, chrono, uuid
 被依赖: clawx-runtime
-说明: v0.1 负责 Short-Term + Long-Term 持久化记忆；Working Memory 由 clawx-runtime 实现 (ADR-010)
+说明: v0.1 负责 Long-Term 持久化记忆 (Agent/User Memory)；v0.2 新增 Short-Term Memory；Working Memory 由 clawx-runtime 实现 (ADR-009, ADR-010)
 ```
 
 ### clawx-kb (Layer 3)
@@ -201,7 +202,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 |------|------|
 | 下层不依赖上层 | types 不得依赖任何其他 crate |
 | Domain 不依赖 API | 领域层不感知接口层 |
-| Infrastructure 不依赖 Domain | vault/hal 不直接依赖 memory/kb/skills |
+| Config/Infra (Layer 1) 不依赖 Domain (Layer 2+) | config/eventbus/hal 不直接依赖 llm/security/vault 等上层 |
 | 模块间通过 EventBus 解耦 | 避免 scheduler → runtime 直接依赖 |
 | ffi/cli 不直接依赖 runtime | 统一通过 controlplane-client (ADR-004) |
 
