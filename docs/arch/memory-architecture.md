@@ -773,7 +773,7 @@ pub trait MemoryExtractor: Send + Sync {
         &self,
         agent_id: &AgentId,
         messages: &[Message],
-    ) -> Result<Vec<MemoryCandiate>>;
+    ) -> Result<Vec<MemoryCandidate>>;
 }
 
 /// 记忆衰减引擎接口

@@ -109,7 +109,7 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 | **clawx-vault** | 工作区版本化与回滚（自动版本点、变更集、智能清理） | — |
 | **clawx-scheduler** | Cron 定时 + 事件驱动调度（v0.2） | — |
 | **clawx-channel** | IM 统一接入，含消息路由（v0.2） | — |
-| **clawx-artifact** | Agent 产物管理、预览、导出（v0.3+） | — |
+| **clawx-artifact** | Agent 产物管理、预览、导出（v0.3） | — |
 
 ### Layer 3 — Services
 
@@ -118,7 +118,7 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 | **clawx-memory** | 持久化记忆系统：v0.1 Long-Term (Agent/User Memory)，v0.2 +Short-Term；语义召回与衰减 | [memory-architecture.md](./memory-architecture.md) |
 | **clawx-kb** | 知识库引擎：FSEvents 监控、多格式解析、混合检索 | — |
 | **clawx-skills** | Skills 执行引擎、WASM 沙箱、MCP 客户端（v0.2） | — |
-| **clawx-ota** | OTA 远程更新、Ed25519 签名验证（v0.3+） | — |
+| **clawx-ota** | OTA 远程更新、Ed25519 签名验证（v0.4） | — |
 
 ### Layer 4 — Runtime
 
@@ -210,7 +210,7 @@ iOS App ◀══ HTTPS ══▶ Cloud Relay ◀══ WSS ══▶ Mac clawx-
                   (E2E X25519 加密, Relay 不可解密)
 ```
 
-Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓存 (TTL 7天)。依赖 v0.3+ 账号体系。PRD 中提及的 Tailscale/WireGuard 作为替代方案保留评估 (ADR-026)。
+Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓存 (TTL 7天)。依赖 v0.3 账号体系。PRD 中提及的 Tailscale/WireGuard 作为替代方案保留评估 (ADR-026)。
 
 ---
 

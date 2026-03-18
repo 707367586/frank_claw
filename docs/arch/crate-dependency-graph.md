@@ -113,7 +113,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 依赖: clawx-types, clawx-eventbus
 外部: tokio, tracing
 被依赖: (通过 eventbus 间接与 runtime 交互)
-说明: v0.3+ 平台服务层 (ADR-022)
+说明: v0.3 平台服务层 (ADR-022)
 ```
 
 ### clawx-memory (Layer 3)
@@ -127,9 +127,9 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 ### clawx-kb (Layer 3)
 ```
 依赖: clawx-types, clawx-llm, clawx-eventbus(v0.2 启用), clawx-hal
-外部: tokio, async-trait, tracing
+外部: tokio, async-trait, sqlx, qdrant-client, tantivy, tracing
 被依赖: clawx-runtime
-说明: 通过 clawx-hal 获取 FSEvents 文件监控能力 (ADR-019)
+说明: 通过 clawx-hal 获取 FSEvents 文件监控能力 (ADR-019)；sqlx 读写 documents/chunks 表，qdrant-client 写入向量，tantivy 构建 BM25 索引
 ```
 
 ### clawx-skills (Layer 3)
@@ -145,7 +145,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 依赖: clawx-types, clawx-hal
 外部: tokio, tracing
 被依赖: (独立模块)
-说明: v0.3+ 平台服务层 (ADR-022)
+说明: v0.4 平台服务层 (ADR-022)
 ```
 
 ### clawx-runtime (Layer 4)

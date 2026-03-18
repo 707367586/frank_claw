@@ -186,10 +186,10 @@ CREATE INDEX idx_usage_date ON usage_stats(date);
 CREATE INDEX idx_usage_agent ON usage_stats(agent_id, date);
 ```
 
-### 2.5 定时任务
+### 2.5 定时任务 (v0.2)
 
 ```sql
--- 定时/事件驱动任务
+-- 定时/事件驱动任务 (v0.2, clawx-scheduler)
 CREATE TABLE scheduled_tasks (
     id          TEXT PRIMARY KEY,
     agent_id    TEXT NOT NULL REFERENCES agents(id),
@@ -240,10 +240,10 @@ CREATE TABLE vault_changes (
 CREATE INDEX idx_changes_snapshot ON vault_changes(snapshot_id);
 ```
 
-### 2.7 IM 渠道
+### 2.7 IM 渠道 (v0.2)
 
 ```sql
--- 渠道配置
+-- 渠道配置 (v0.2, clawx-channel)
 CREATE TABLE channels (
     id          TEXT PRIMARY KEY,
     type        TEXT NOT NULL,              -- lark/telegram/slack/whatsapp/discord/wecom
@@ -256,10 +256,10 @@ CREATE TABLE channels (
 );
 ```
 
-### 2.8 产物管理
+### 2.8 产物管理 (v0.3)
 
 ```sql
--- Agent 产物
+-- Agent 产物 (v0.3, clawx-artifact)
 CREATE TABLE artifacts (
     id          TEXT PRIMARY KEY,
     agent_id    TEXT NOT NULL REFERENCES agents(id),

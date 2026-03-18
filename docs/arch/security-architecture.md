@@ -56,6 +56,8 @@
 
 ### L3: 宿主边界凭证注入
 
+> **v0.1 凭证安全说明：** v0.1 没有 WASM 沙箱，所有工具以 T2/T3 运行，凭证通过 L8（Keychain + Zeroizing）直接安全管理。L3 的占位符替换机制专为 v0.2 WASM 沙箱设计——沙箱内代码无法直接访问 Keychain，需要宿主侧代理注入。
+
 密钥永不进入沙箱。WASM Tool 通过占位符 `{SECRET_NAME}` 引用密钥，宿主侧在 HTTP 调用边界替换真实值。流程：
 
 ```
@@ -67,7 +69,7 @@
 
 ### L4: 声明式权限能力模型
 
-每个 Skill/Tool 通过 `capabilities.toml` 声明权限（net_http/secrets/fs_read/fs_write/exec_shell），安装时用户确认，运行时校验。默认全部禁止。
+每个 Skill/Tool 通过 `capabilities.toml` 声明权限（net_http/secrets/fs_read/fs_write/exec_shell），安装时用户确认，运行时校验。默认全部禁止。v0.1 中 L4 作用于内置能力预设（Capabilities），v0.2 起扩展至可安装 Skills。
 
 ### L5: DLP + Aho-Corasick 泄漏检测
 
@@ -127,6 +129,6 @@ SHA-256 哈希链，追加写入不可修改。定期完整性校验，失败弹
 
 | 阶段 | 安全能力 |
 |------|---------|
-| **v0.1** | L4 权限弹窗, L5 基础DLP, L6 网络白名单+SSRF, L7, L8, L11 基础限速, L12 审计+哈希链 |
-| **v0.2** | L1 Prompt注入三层, L2 WASM双计量, L3 凭证注入, L5 Aho-Corasick, L9, L10 |
+| **v0.1** | L4 权限弹窗(内置能力预设), L5 基础DLP, L6 网络白名单+SSRF, L7, L8(Keychain+Zeroizing), L11 基础限速, L12 审计+哈希链 |
+| **v0.2** | L1 Prompt注入三层, L2 WASM双计量, L3 沙箱凭证注入(占位符替换), L4 扩展至Skills, L5 Aho-Corasick, L9, L10 |
 | **v0.3+** | Skills 四层检测, 高级异常检测, DNS重绑定+重定向链 |
