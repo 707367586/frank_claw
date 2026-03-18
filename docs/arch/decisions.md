@@ -215,3 +215,45 @@
 **决策:** 移动端随行采用 Cloud Relay 方案（WSS + E2E X25519 加密），Relay 不可解密消息内容。PRD 中提及的 Tailscale/WireGuard 作为替代方案保留评估，不作为默认实现。
 
 **理由:** Cloud Relay 零配置体验更好；E2E 加密保证数据主权。该能力依赖 v0.3+ 账号体系。
+
+---
+
+## ADR-027: 自主性能力集成在 clawx-runtime 而非独立 Crate
+
+**决策:** 自主性引擎 (ReAct, Planner, Reflection 等) 作为 `clawx-runtime` 的子模块实现，而非独立 Crate。
+
+**理由:** 自主性引擎是运行时编排的核心部分，与 Runtime 紧密耦合；独立 Crate 会引入大量跨模块调用开销；通过子模块保持代码组织清晰度。
+
+**详见:** [autonomy-architecture.md](./autonomy-architecture.md)
+
+---
+
+## ADR-028: ReAct 为基础推理模式
+
+**决策:** ReAct 为基础推理循环，Planner 作为 ReAct 内部的可选增强。复杂任务先 Plan 再在每步中 ReAct，简单任务直接 ReAct。
+
+**理由:** ReAct 更灵活，可根据中间结果动态调整；Plan-and-Execute 在信息不完整时容易产生错误计划。
+
+---
+
+## ADR-029: Computer Use 优先使用 Accessibility API
+
+**决策:** 三层操作策略：API/Script → Accessibility API → Vision (截屏+LLM)，优先使用高效精确的方法。
+
+**理由:** 纯视觉方案 Token 消耗巨大 (每次截屏约 1-2K tokens)，且易误操作；Accessibility API 是 macOS 原生能力，精确且低开销；Vision 作为通用兜底。
+
+---
+
+## ADR-030: 信任等级按 Agent 独立计算
+
+**决策:** Per-Agent 独立信任等级，而非全局共享。
+
+**理由:** 不同 Agent 能力范围不同；用户可能信任"写作助手"的自主操作但不信任"开发者"的 Shell 执行；Per-Agent 更符合专业化分工理念。
+
+---
+
+## ADR-031: 预测性主动基于记忆系统
+
+**决策:** 行为模式作为特殊类型的 Agent Memory 存储在现有记忆系统中，而非独立行为分析库。
+
+**理由:** 复用三层记忆架构的衰减、召回、审计能力；避免引入新的存储引擎；行为模式本质上就是 Agent 对用户的"学习记忆"。

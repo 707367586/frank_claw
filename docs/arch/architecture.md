@@ -1,4 +1,4 @@
-# ClawX Architecture v4.0
+# ClawX Architecture v4.1
 
 **日期:** 2026-03-18 | **对应 PRD:** v2.0
 
@@ -24,29 +24,40 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
         │ FFI        │ CLI            │                   │ Cloud Relay
         ▼            ▼                ▼                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    Control Plane / API Layer                         │
+│             Layer 5: API / Application Layer                        │
 │  clawx-ffi ─┐                                                       │
 │              ├─▶ clawx-controlplane-client ──▶ clawx-api (REST/Axum)│
-│  clawx-cli ─┘                                                       │
+│  clawx-cli ─┘                           clawx-service (守护进程)   │
 └─────────┬──────────────────┬──────────────────────┬────────────────┘
           ▼                  ▼                      ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        Core Runtime Layer                           │
+│             Layer 4: Core Runtime Layer                              │
 │  clawx-runtime: Agent 生命周期 │ 对话编排 │ Tool 调度 │ 上下文管理  │
-│  clawx-eventbus: 异步事件总线 │ Pub/Sub                             │
 └─────────────────────────────────────────────────────────────────────┘
           │
           ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                       Domain Services Layer                         │
-│  clawx-llm      │ clawx-memory   │ clawx-kb       │ clawx-security│
-│  clawx-skills   │ clawx-scheduler│ clawx-channel  │ clawx-artifact│
+│             Layer 3: Services Layer                                  │
+│  clawx-memory   │ clawx-kb       │ clawx-skills     │ clawx-ota   │
 └─────────────────────────────────────────────────────────────────────┘
           │
           ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                       Infrastructure Layer                          │
-│  clawx-vault │ clawx-hal │ clawx-ota │ clawx-config │ clawx-types │
+│             Layer 2: Domain Layer                                    │
+│  clawx-llm      │ clawx-security │ clawx-vault      │ clawx-scheduler│
+│  clawx-channel  │ clawx-artifact │                                  │
+└─────────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│             Layer 1: Config / Infrastructure Layer                   │
+│  clawx-config   │ clawx-eventbus │ clawx-hal                       │
+└─────────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│             Layer 0: Foundation                                      │
+│  clawx-types                                                        │
 └─────────────────────────────────────────────────────────────────────┘
           │
           ▼
@@ -137,7 +148,7 @@ User Input → clawx-ffi/cli → controlplane-client → clawx-api → clawx-run
   → 并行: clawx-memory (记忆召回) + clawx-kb (知识检索)
   → Prompt 组装 (System + Memory + Knowledge + User)  [由 Runtime 完成, ADR-010]
   → clawx-llm (LLM 调用, 流式输出)
-  → clawx-security (DLP 出站扫描)
+  → clawx-security (DLP 三节点扫描: LLM 出站/Tool 输出/WASM HTTP 响应)
   → Response → User
 ```
 

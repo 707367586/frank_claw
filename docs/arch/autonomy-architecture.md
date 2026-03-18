@@ -3,7 +3,7 @@
 **版本:** 1.0
 **日期:** 2026年3月18日
 **对应 PRD:** v2.0
-**对应架构:** v4.0
+**对应架构:** v4.1
 **变更说明:** 新增 Agent 自主性深度架构设计，补充 ReAct 推理循环、多 Agent 协作、自我反思、层级规划、工具学习、Computer Use 六大核心能力
 
 ---
@@ -84,7 +84,7 @@ Level 1: 响应式 (Reactive)
 
 ### 2.1 新增架构层
 
-在现有 Architecture v4.0 的 `clawx-runtime` 内部，新增 **Autonomy Engine** 子模块，作为所有自主性能力的统一编排层：
+在现有 Architecture v4.1 的 `clawx-runtime` 内部，新增 **Autonomy Engine** 子模块，作为所有自主性能力的统一编排层：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -186,61 +186,18 @@ ReAct 循环让 Agent 具备**迭代推理**能力：
 
 ### 3.2 ReAct 状态机
 
-```rust
-/// ReAct 循环的核心状态机
-pub enum ReActState {
-    /// 思考阶段: LLM 分析当前状态，决定下一步
-    Thinking {
-        context: ThinkingContext,
-        iteration: u32,
-    },
-    /// 行动阶段: 执行 LLM 决定的工具调用
-    Acting {
-        action: PlannedAction,
-        iteration: u32,
-    },
-    /// 观察阶段: 收集工具执行结果
-    Observing {
-        action_result: ActionResult,
-        iteration: u32,
-    },
-    /// 评估阶段: 判断是否需要继续迭代
-    Evaluating {
-        accumulated_context: Vec<ReActStep>,
-        iteration: u32,
-    },
-    /// 完成: 返回最终结果
-    Completed {
-        result: AgentResponse,
-        steps: Vec<ReActStep>,
-        total_iterations: u32,
-    },
-    /// 需要用户确认 (高风险操作)
-    AwaitingConfirmation {
-        pending_action: PlannedAction,
-        risk_level: RiskLevel,
-        explanation: String,
-    },
-}
+**核心状态流转：** Thinking → Acting → Observing → Evaluating → Completed | AwaitingConfirmation
 
-/// 单步 ReAct 记录 (用于推理链展示)
-pub struct ReActStep {
-    pub thought: String,          // Agent 的思考过程
-    pub action: PlannedAction,    // 决定执行的操作
-    pub observation: String,      // 操作结果
-    pub evaluation: StepEval,     // 评估结果
-    pub duration_ms: u64,
-    pub tokens_used: u32,
-}
+| 状态 | 说明 |
+|------|------|
+| Thinking | LLM 分析当前状态，决定下一步 |
+| Acting | 执行 LLM 决定的工具调用 |
+| Observing | 收集工具执行结果 |
+| Evaluating | 判断是否需要继续迭代 (Continue/Complete/NeedHumanInput/Error) |
+| Completed | 返回最终结果和完整推理链 |
+| AwaitingConfirmation | 高风险操作等待用户确认 |
 
-/// 步骤评估
-pub enum StepEval {
-    Continue { reason: String },         // 需要继续
-    Complete { confidence: f64 },        // 任务完成
-    NeedHumanInput { question: String }, // 需要用户输入
-    Error { recoverable: bool, msg: String },
-}
-```
+每个状态携带迭代计数器。完成时输出推理链，每步记录思考过程、执行操作、观察结果、评估结论、耗时和 Token 消耗。
 
 ### 3.3 安全围栏 (Safety Guardrails)
 
@@ -354,63 +311,18 @@ ReAct 循环安全约束:
 
 ### 4.3 反思类型
 
-```rust
-/// 反思检查类型
-pub enum ReflectionCheck {
-    /// 输出质量: 完整性、准确性、格式
-    QualityCheck {
-        completeness: f64,   // 是否完整回答了用户问题
-        accuracy: f64,       // 事实准确性 (可通过 KB 验证)
-        format_match: f64,   // 是否符合用户偏好的格式
-    },
+**检查维度：**
 
-    /// 一致性检查: 与记忆、知识库、历史的一致性
-    ConsistencyCheck {
-        memory_consistent: bool,     // 与用户记忆一致
-        kb_consistent: bool,         // 与知识库内容一致
-        self_consistent: bool,       // 前后逻辑自洽
-        contradictions: Vec<String>, // 发现的矛盾点
-    },
+| 维度 | 检查内容 |
+|------|---------|
+| 质量检查 | 完整性、准确性 (可通过 KB 验证)、格式匹配度 |
+| 一致性检查 | 与记忆一致、与知识库一致、前后逻辑自洽、矛盾点检测 |
+| 安全检查 | 敏感数据、有害内容、准则遵循 |
+| 任务完成度 | 原始意图匹配、已覆盖方面、遗漏方面、完成比例 |
 
-    /// 安全检查: 是否包含有害内容
-    SafetyCheck {
-        has_sensitive_data: bool,
-        has_harmful_content: bool,
-        follows_guidelines: bool,
-    },
+**修正策略：** 补充遗漏 │ 修正错误 │ 重新组织格式 │ 完全重做 │ 请求用户澄清
 
-    /// 任务完成度: 是否完成了用户的实际需求
-    TaskCompletionCheck {
-        original_intent: String,     // 用户原始意图
-        addressed_aspects: Vec<String>,
-        missing_aspects: Vec<String>,
-        completion_ratio: f64,
-    },
-}
-
-/// 反思结果
-pub struct ReflectionResult {
-    pub overall_confidence: f64,
-    pub checks: Vec<ReflectionCheck>,
-    pub suggested_improvements: Vec<Improvement>,
-    pub should_revise: bool,
-    pub revision_strategy: Option<RevisionStrategy>,
-}
-
-/// 修正策略
-pub enum RevisionStrategy {
-    /// 补充遗漏内容
-    Supplement { missing: Vec<String> },
-    /// 修正错误
-    Correct { errors: Vec<Correction> },
-    /// 重新组织格式
-    Reformat { target_format: String },
-    /// 完全重做
-    Redo { reason: String },
-    /// 请求用户澄清
-    Clarify { questions: Vec<String> },
-}
-```
+反思引擎输出综合置信度评分，并根据评分决定是否触发修正。
 
 ### 4.4 反思触发策略
 
@@ -511,54 +423,14 @@ Agent (反思后):
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.3 核心数据结构
+### 5.3 核心概念
 
-```rust
-/// 任务计划 (层级结构)
-pub struct TaskPlan {
-    pub id: PlanId,
-    pub goal: String,                    // 顶层目标
-    pub root_task: TaskNode,             // 根任务节点
-    pub metadata: PlanMetadata,
-    pub status: PlanStatus,
-    pub created_at: DateTime<Utc>,
-}
+**任务计划 (TaskPlan)：** 包含顶层目标和根任务节点树，计划状态可为 Draft → Approved → InProgress → Paused → Completed/Failed。
 
-/// 任务节点 (树结构)
-pub struct TaskNode {
-    pub id: TaskNodeId,
-    pub title: String,
-    pub description: String,
-    pub status: TaskStatus,
-    pub dependencies: Vec<TaskNodeId>,   // 前置依赖
-    pub children: Vec<TaskNode>,         // 子任务
-    pub required_tools: Vec<ToolId>,     // 需要的工具
-    pub estimated_tokens: u32,           // 预估 Token 消耗
-    pub result: Option<TaskResult>,      // 执行结果
-    pub can_parallel: bool,              // 是否可与兄弟节点并行
-}
-
-/// 任务状态
-pub enum TaskStatus {
-    Pending,                             // 等待执行
-    Running,                             // 正在执行
-    WaitingForUser { question: String }, // 等待用户输入
-    Completed { result: TaskResult },    // 已完成
-    Failed { error: String, retries: u32 },
-    Skipped { reason: String },          // 跳过
-    Replanned { new_subtasks: Vec<TaskNode> }, // 重新规划
-}
-
-/// 计划状态
-pub enum PlanStatus {
-    Draft,           // 草案 (等待用户确认)
-    Approved,        // 已批准 (用户确认执行)
-    InProgress,      // 执行中
-    Paused,          // 用户暂停
-    Completed,       // 全部完成
-    Failed,          // 失败
-}
-```
+**任务节点 (TaskNode)：** 树形结构，每个节点包含：
+- 标题、描述、前置依赖列表、子任务列表
+- 所需工具、预估 Token 消耗、是否可与兄弟节点并行执行
+- 状态：Pending / Running / WaitingForUser / Completed / Failed / Skipped / Replanned
 
 ### 5.4 动态重规划 (Re-planning)
 
@@ -593,7 +465,7 @@ pub enum PlanStatus {
 
 ### 6.1 设计原理
 
-ClawX 已支持多 Agent 配置，但 v4.0 架构中 Agent 之间是完全隔离的（循环守卫 L9 防止 Agent 间调用）。本设计引入**受控的结构化协作**，允许 Agent 在明确的协作协议下互相委托任务。
+ClawX 已支持多 Agent 配置，但当前架构中 Agent 之间是完全隔离的（循环守卫 L9 防止 Agent 间调用）。本设计引入**受控的结构化协作**，允许 Agent 在明确的协作协议下互相委托任务。
 
 > **关键区别**：不是无限制的 Agent A ↔ B 互调（仍然危险），而是通过 **Orchestrator 模式** 实现单向、可控的委托。
 
@@ -661,43 +533,14 @@ ClawX 已支持多 Agent 配置，但 v4.0 架构中 Agent 之间是完全隔离
 
 ### 6.3 协作协议
 
-```rust
-/// Agent 间协作请求
-pub struct DelegationRequest {
-    pub id: DelegationId,
-    pub from_agent: AgentId,             // 发起方
-    pub to_agent: AgentId,               // 被委托方
-    pub pattern: CollaborationPattern,   // 协作模式
-    pub task: DelegatedTask,             // 委托任务
-    pub context: DelegationContext,      // 提供给被委托方的上下文
-    pub constraints: DelegationConstraints,
-    pub created_at: DateTime<Utc>,
-}
+**协作请求核心要素：**
 
-/// 委托上下文 (最小化，不暴露发起方完整记忆)
-pub struct DelegationContext {
-    pub task_description: String,        // 任务描述
-    pub relevant_data: Vec<DataSnippet>, // 相关数据片段
-    pub output_format: Option<String>,   // 期望输出格式
-    pub max_tokens: u32,                 // Token 预算
-}
-
-/// 委托约束
-pub struct DelegationConstraints {
-    pub max_depth: u32,                  // 最大委托链深度 (默认 2)
-    pub max_iterations: u32,             // 被委托方最大迭代次数
-    pub timeout_secs: u64,               // 超时时间
-    pub allowed_tools: Vec<ToolId>,      // 被委托方可用工具
-    pub require_user_approval: bool,     // 是否需要用户批准委托
-}
-
-/// 协作模式
-pub enum CollaborationPattern {
-    Delegation,                // 委托: 1:1 任务下发
-    Negotiation { agents: Vec<AgentId> }, // 协商: 多方意见汇总
-    Pipeline { stages: Vec<PipelineStage> }, // 流水线: 顺序加工
-}
-```
+| 要素 | 说明 |
+|------|------|
+| 发起方/被委托方 | Agent ID 对 |
+| 协作模式 | Delegation (1:1) / Negotiation (多方) / Pipeline (顺序) |
+| 委托上下文 | 最小化上下文——仅包含任务描述、相关数据片段、期望输出格式、Token 预算；不暴露发起方完整记忆 |
+| 委托约束 | 最大委托深度 (默认 2)、最大迭代次数、超时时间、可用工具白名单、是否需用户批准 |
 
 ### 6.4 与现有安全架构的集成
 
@@ -1015,43 +858,15 @@ Agent 思考链:
 
 ### 9.3 信任评分算法
 
-```rust
-/// 信任评分计算
-pub struct TrustScore {
-    pub level: TrustLevel,
-    pub score: f64,                   // 0-100 综合分
-    pub successful_tasks: u64,        // 成功任务数
-    pub total_tasks: u64,             // 总任务数
-    pub user_rollbacks: u64,          // 用户回滚次数
-    pub user_corrections: u64,        // 用户纠正次数
-    pub positive_feedback: u64,       // 正面反馈
-    pub negative_feedback: u64,       // 负面反馈
-    pub last_incident: Option<DateTime<Utc>>, // 最近一次严重事件
-}
+**评分公式：**
 
-impl TrustScore {
-    /// 综合评分计算
-    pub fn calculate(&self) -> f64 {
-        let success_rate = self.successful_tasks as f64 / self.total_tasks.max(1) as f64;
-        let rollback_penalty = self.user_rollbacks as f64 * 5.0;
-        let correction_penalty = self.user_corrections as f64 * 2.0;
-        let feedback_bonus = (self.positive_feedback as f64 - self.negative_feedback as f64 * 3.0).max(0.0);
-        let recency_factor = self.last_incident
-            .map(|t| {
-                let days = (Utc::now() - t).num_days() as f64;
-                (days / 30.0).min(1.0) // 30 天后事件影响消退
-            })
-            .unwrap_or(1.0);
-
-        let raw = success_rate * 60.0
-            + feedback_bonus.min(20.0)
-            - rollback_penalty
-            - correction_penalty;
-
-        (raw * recency_factor).clamp(0.0, 100.0)
-    }
-}
 ```
+score = success_rate × 60 + feedback_bonus (max 20) - rollback_penalty (×5) - correction_penalty (×2)
+score *= recency_factor (严重事件 30 天后影响消退)
+最终 score 取值 [0, 100]
+```
+
+**输入维度：** 成功/总任务数、用户回滚次数、用户纠正次数、正面/负面反馈数、最近严重事件时间。
 
 ### 9.4 信任降级 (Demotion)
 
@@ -1124,65 +939,20 @@ impl TrustScore {
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-### 10.3 行为模式数据结构
+### 10.3 行为模式数据模型
 
-```rust
-/// 用户行为模式
-pub struct BehaviorPattern {
-    pub id: PatternId,
-    pub pattern_type: PatternType,
-    pub description: String,           // 自然语言描述
-    pub confidence: f64,               // 置信度 (0-1)
-    pub trigger_condition: TriggerCondition,
-    pub suggested_action: ProactiveAction,
-    pub occurrences: u32,              // 观察到的发生次数
-    pub accepted_count: u32,           // 用户接受次数
-    pub rejected_count: u32,           // 用户拒绝次数
-    pub suppressed: bool,              // 是否被用户永久抑制
-    pub last_triggered: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-}
+**行为模式核心属性：** 模式类型、自然语言描述、置信度 (0-1)、触发条件、建议行动、观察次数、接受/拒绝次数、是否被永久抑制。
 
-/// 模式类型
-pub enum PatternType {
-    Temporal {                         // 时间模式
-        cron: String,                  // 学习到的 Cron 表达式
-        tolerance_mins: u32,           // 时间容差
-    },
-    Sequential {                       // 序列模式
-        preceding_actions: Vec<String>,
-        following_action: String,
-    },
-    Contextual {                       // 上下文模式
-        context_signal: String,        // 如 "calendar_event_in_30m"
-        action_pattern: String,
-    },
-    Anomaly {                          // 异常模式
-        metric: String,
-        threshold: f64,
-        current_value: f64,
-    },
-}
+**模式类型：**
 
-/// 主动行动
-pub enum ProactiveAction {
-    /// 静默预处理 (用户不感知)
-    SilentPrep {
-        task: String,
-        cache_result: bool,
-    },
-    /// 建议性通知 (温和提醒)
-    Suggestion {
-        message: String,
-        actions: Vec<QuickAction>,
-    },
-    /// 直接执行 (高置信度 + 低风险)
-    AutoExecute {
-        task: String,
-        notify_after: bool,
-    },
-}
-```
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| 时间模式 | 学习到的 Cron 表达式 + 时间容差 | "用户每周五下午 4 点写周报" |
+| 序列模式 | 前置行为序列 → 后续行为 | "搜索论文后总是请求总结" |
+| 上下文模式 | 上下文信号触发 | "日历事件前 30 分钟准备材料" |
+| 异常模式 | 指标超阈值 | "磁盘空间低于 10%" |
+
+**主动行动类型：** 静默预处理 (用户不感知) │ 建议性通知 (温和提醒) │ 直接执行 (高置信度+低风险)
 
 ---
 
@@ -1192,7 +962,7 @@ pub enum ProactiveAction {
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  变更清单 (对 Architecture v4.0 的增量修改)                           │
+│  变更清单 (对 Architecture v4.1 的增量修改)                           │
 │                                                                      │
 │  ❶ clawx-runtime (修改)                                             │
 │     ├── 新增: autonomy/ 子目录                                       │
@@ -1229,7 +999,7 @@ pub enum ProactiveAction {
 ### 11.2 对话处理流程升级
 
 ```
-升级后的对话处理流程 (替换 Architecture v4.0 §3.1):
+升级后的对话处理流程 (替换 Architecture v4.1 §3.1):
 
 User Input (GUI/CLI/IM)
     │
@@ -1289,9 +1059,9 @@ User Input (GUI/CLI/IM)
 
 | 阶段 | 自主性能力 | 说明 |
 |------|-----------|------|
-| **v0.1 本地闭环** | ReAct 推理循环 (基础)、层级任务规划 (基础)、自我反思 (基础)、信任渐进 (Level 0-2) | 单 Agent 内的自主推理和执行 |
-| **v0.2 扩展执行** | 多 Agent 协作、工具学习与发现、Computer Use (基础)、预测性主动、信任渐进 (Level 0-4) | 跨 Agent 协作 + 环境交互 |
-| **v0.3+ 平台服务** | Computer Use (完整)、高级预测引擎、社区 Agent 间协作 | 平台级自主能力 |
+| **v0.1 本地闭环** | Runtime 基础护栏（最大迭代次数、Token 预算限制） | 无完整自主性能力，仅安全护栏 (ADR-020) |
+| **v0.2 扩展执行** | ReAct 推理循环、自我反思与纠错、层级任务规划、信任渐进 (Level 0-4)、工具学习与发现、预测性主动 | 单 Agent 内的自主推理和执行 |
+| **v0.3+ 平台服务** | 多 Agent 协作、Computer Use、高级预测引擎、社区 Agent 间协作 | 跨 Agent 协作 + 环境交互 + 平台级自主能力 |
 
 ---
 
@@ -1322,69 +1092,15 @@ User Input (GUI/CLI/IM)
 
 ---
 
-## 13. 架构决策记录 (ADR)
+## 13. 关联架构决策
 
-### ADR-020: 自主性能力集成在 clawx-runtime 而非独立 Crate
+本文档涉及的架构决策已统一收录于 [decisions.md](./decisions.md)：
 
-**状态:** 已采纳
-
-**背景:** 自主性引擎 (ReAct, Planner, Reflection 等) 需要频繁访问 LLM、Memory、Security 等模块。
-
-**决策:** 作为 clawx-runtime 的子模块实现，而非独立 Crate。
-
-**理由:**
-- 自主性引擎是运行时编排的核心部分，与 Runtime 紧密耦合
-- 独立 Crate 会引入大量跨模块调用开销
-- 通过子模块保持代码组织清晰度
-
-### ADR-021: 采用 ReAct 而非 Plan-and-Execute 作为基础推理模式
-
-**状态:** 已采纳
-
-**背景:** 两种主流 Agent 推理模式——ReAct (逐步推理) vs Plan-and-Execute (先全量规划再执行)。
-
-**决策:** ReAct 为基础推理循环，Planner 作为 ReAct 内部的可选增强。
-
-**理由:**
-- ReAct 更灵活，可根据中间结果动态调整
-- Plan-and-Execute 在信息不完整时容易产生错误计划
-- 两者组合：复杂任务先 Plan 再在每步中 ReAct，简单任务直接 ReAct
-
-### ADR-022: Computer Use 优先使用 Accessibility API 而非纯视觉
-
-**状态:** 已采纳
-
-**背景:** Computer Use 可通过截屏+视觉识别或 Accessibility API 实现。
-
-**决策:** 三层策略：API/Script → Accessibility → Vision，优先使用高效精确的方法。
-
-**理由:**
-- 纯视觉方案 Token 消耗巨大 (每次截屏约 1-2K tokens)，且易误操作
-- Accessibility API 是 macOS 原生能力，精确且低开销
-- Vision 作为通用兜底，处理无法通过 API 操作的第三方应用
-
-### ADR-023: 信任等级按 Agent 独立计算
-
-**状态:** 已采纳
-
-**背景:** 信任等级可以是全局的（所有 Agent 共享）或 Per-Agent 的。
-
-**决策:** Per-Agent 独立信任等级。
-
-**理由:**
-- 不同 Agent 能力范围不同，同一信任等级含义不同
-- 用户可能信任"写作助手"的自主操作但不信任"开发者"的 Shell 执行
-- Per-Agent 更符合"专业化分工"的产品理念
-
-### ADR-024: 预测性主动基于记忆系统而非独立行为分析库
-
-**状态:** 已采纳
-
-**背景:** 行为模式可以存储在独立的分析数据库或复用现有记忆系统。
-
-**决策:** 行为模式作为特殊类型的 Agent Memory 存储在现有记忆系统中。
-
-**理由:**
-- 复用三层记忆架构的衰减、召回、审计能力
-- 避免引入新的存储引擎
-- 行为模式本质上就是 Agent 对用户的"学习记忆"
+| ADR | 标题 | 要点 |
+|-----|------|------|
+| ADR-020 | 自主性分阶段引入 | v0.1 只有护栏，v0.2 引入 ReAct/反思/信任 |
+| ADR-027 | 自主性能力集成在 clawx-runtime | 作为 Runtime 子模块，不独立 Crate |
+| ADR-028 | ReAct 为基础推理模式 | ReAct + 可选 Planner 增强 |
+| ADR-029 | Computer Use 优先 Accessibility API | 三层策略：API/Script → Accessibility → Vision |
+| ADR-030 | 信任等级按 Agent 独立计算 | Per-Agent 信任，不全局共享 |
+| ADR-031 | 预测性主动基于记忆系统 | 行为模式作为 Agent Memory 存储 |

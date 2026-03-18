@@ -1,7 +1,8 @@
 # ClawX 数据模型与存储架构
 
-**版本:** 3.1
+**版本:** 3.2
 **日期:** 2026年3月18日
+**对应架构:** v4.1
 
 ---
 
@@ -96,6 +97,11 @@ CREATE VIRTUAL TABLE memories_fts USING fts5(
     content='memories', content_rowid='rowid'
 );
 ```
+
+> **更多记忆相关表**（权威定义见 [memory-architecture.md](./memory-architecture.md) §4.2）：
+> - `memory_audit_log` — 共享记忆变更审计日志
+> - `short_term_memories` — Session 级短期记忆（v0.2）
+> - `memory_sessions` — Session 生命周期管理（v0.2）
 
 ### 2.3 知识库
 

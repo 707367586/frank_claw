@@ -1,6 +1,6 @@
 # ClawX Crate 依赖关系图
 
-**版本:** 4.0
+**版本:** 4.1
 **日期:** 2026年3月18日
 
 ---
@@ -17,8 +17,9 @@ Layer 1 (Config/Infra)   clawx-config    clawx-eventbus    clawx-hal
 Layer 2 (Domain)        clawx-llm  clawx-security  clawx-vault  clawx-scheduler
                           │  │         │               │           │
                           │  │    clawx-channel   clawx-artifact  │
-                          │  │         │                           │
-Layer 3 (Services)   clawx-memory  clawx-kb  clawx-skills         clawx-ota
+                          │  │         │                    │      │
+Layer 3 (Services)   clawx-memory  clawx-kb  clawx-skills  │   clawx-ota
+                                     │ (hal)               │      │ (hal)
                           │          │            │
 Layer 4 (Runtime)         └──────────┴────────────┘
                               clawx-runtime
@@ -64,7 +65,8 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 ```
 依赖: clawx-types
 外部: tokio, async-trait, tracing
-被依赖: clawx-ota
+被依赖: clawx-kb, clawx-ota
+说明: 封装 FSEvents/Keychain/Notification 等 macOS 宿主能力 (ADR-019)
 ```
 
 ### clawx-llm (Layer 2)
@@ -122,9 +124,10 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 
 ### clawx-kb (Layer 3)
 ```
-依赖: clawx-types, clawx-llm, clawx-eventbus
+依赖: clawx-types, clawx-llm, clawx-eventbus, clawx-hal
 外部: tokio, async-trait, tracing
 被依赖: clawx-runtime
+说明: 通过 clawx-hal 获取 FSEvents 文件监控能力 (ADR-019)
 ```
 
 ### clawx-skills (Layer 3)
