@@ -58,6 +58,7 @@ SSE 事件格式：
 | Method | Path | 描述 |
 |--------|------|------|
 | GET | `/memories` | 查询（scope / kind / keyword） |
+| POST | `/memories/search` | 语义搜索记忆（v0.1 FTS5，v0.2 向量检索） |
 | GET/PUT/DELETE | `/memories/:id` | 获取 / 编辑 / 删除 |
 | POST | `/memories/:id/pin` | 固定或取消固定 |
 

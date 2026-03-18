@@ -12,19 +12,21 @@
 
 ## 2. 威胁模型
 
+> **编号说明:** 威胁使用 TH-xx 编号，与 §3 的执行级别 T1/T2/T3 区分。
+
 | ID | 威胁 | 严重度 | 防御层 |
 |----|------|--------|--------|
-| T1 | Prompt 注入 | Critical | L1 + L5 |
-| T2 | 敏感数据外泄 | Critical | L3 + L5 + L8 |
-| T3 | 文件系统破坏 | High | L2 + L4 + L7 |
-| T4 | 恶意 Skills | High | L2 + L3 + L4 + L10 |
-| T5 | SSRF 攻击 | High | L6 |
-| T6 | 供应链攻击 | High | L10 |
-| T7 | Agent 执行循环 | Medium | L9 |
-| T8 | 路径穿越 | High | L7 |
-| T9 | 密钥内存残留 | Medium | L8 |
-| T10 | DDoS/滥用 | Medium | L11 |
-| T11 | 审计日志篡改 | Medium | L12 |
+| TH-01 | Prompt 注入 | Critical | L1 + L5 |
+| TH-02 | 敏感数据外泄 | Critical | L3 + L5 + L8 |
+| TH-03 | 文件系统破坏 | High | L2 + L4 + L7 |
+| TH-04 | 恶意 Skills | High | L2 + L3 + L4 + L10 |
+| TH-05 | SSRF 攻击 | High | L6 |
+| TH-06 | 供应链攻击 | High | L10 |
+| TH-07 | Agent 执行循环 | Medium | L9 |
+| TH-08 | 路径穿越 | High | L7 |
+| TH-09 | 密钥内存残留 | Medium | L8 |
+| TH-10 | DDoS/滥用 | Medium | L11 |
+| TH-11 | 审计日志篡改 | Medium | L12 |
 
 ---
 

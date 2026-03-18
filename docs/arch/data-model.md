@@ -196,7 +196,11 @@ CREATE TABLE scheduled_tasks (
 
 ### 2.6 工作区版本管理
 
+> **存储位置:** vault 元数据存储在独立的 `~/.clawx/vault/index.db` 中，不在主数据库 `clawx.db` 中。独立存储便于 vault 目录整体迁移和独立备份。
+
 ```sql
+-- 以下表位于 ~/.clawx/vault/index.db（独立 SQLite）
+
 -- 版本点
 CREATE TABLE vault_snapshots (
     id          TEXT PRIMARY KEY,

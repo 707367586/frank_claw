@@ -73,42 +73,49 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 
 ## 2. 模块职责
 
-### Foundation Layer
+> **层级说明:** 以下按逻辑职责分组说明各 crate，精确依赖深度（Layer 0-5）详见 [crate-dependency-graph.md](./crate-dependency-graph.md)。
+
+### Layer 0 — Foundation
 
 | Crate | 职责 | 核心内容 |
 |-------|------|---------|
 | **clawx-types** | 全局类型、Trait 接口 | AgentId, Memory, Message, ClawxError, 核心 Trait |
-| **clawx-config** | 配置加载/验证/热更新 | TOML (~/.clawx/config.toml) |
 
-### Core Runtime Layer
+### Layer 1 — Config / Infrastructure
 
 | Crate | 职责 |
 |-------|------|
+| **clawx-config** | 配置加载/验证/热更新 (TOML ~/.clawx/config.toml) |
 | **clawx-eventbus** | 异步 Pub/Sub 事件总线（v0.1 用 Trait 直调，v0.2 启用） |
-| **clawx-runtime** | Agent 生命周期、对话编排、Tool 调度、LLM 请求编排、Working Memory（上下文窗口管理与压缩） |
+| **clawx-hal** | macOS 硬件抽象层（FSEvents/Keychain/Notification/pf） |
 
-### Domain Services Layer
+### Layer 2 — Domain
 
 | Crate | 职责 | 详细设计 |
 |-------|------|---------|
 | **clawx-llm** | LLM 多模型管理、智能路由、预算追踪、MCP 工具集成 | — |
+| **clawx-security** | 12 层纵深防御、分级执行模型 | [security-architecture.md](./security-architecture.md) |
+| **clawx-vault** | 工作区版本化与回滚（自动版本点、变更集、智能清理） | — |
+| **clawx-scheduler** | Cron 定时 + 事件驱动调度（v0.2） | — |
+| **clawx-channel** | IM 统一接入，含消息路由（v0.2） | — |
+| **clawx-artifact** | Agent 产物管理、预览、导出（v0.3+） | — |
+
+### Layer 3 — Services
+
+| Crate | 职责 | 详细设计 |
+|-------|------|---------|
 | **clawx-memory** | 持久化记忆系统（Short-Term/Long-Term），语义召回与衰减 | [memory-architecture.md](./memory-architecture.md) |
 | **clawx-kb** | 知识库引擎：FSEvents 监控、多格式解析、混合检索 | — |
-| **clawx-security** | 12 层纵深防御、分级执行模型 | [security-architecture.md](./security-architecture.md) |
-| **clawx-skills** | Skills 执行引擎、WASM 沙箱、MCP 客户端 | — |
-| **clawx-scheduler** | Cron 定时 + 事件驱动调度 | — |
-| **clawx-channel** | IM 统一接入（飞书/Telegram/Slack/Discord/企业微信） | — |
-| **clawx-artifact** | Agent 产物管理、预览、导出 | — |
+| **clawx-skills** | Skills 执行引擎、WASM 沙箱、MCP 客户端（v0.2） | — |
+| **clawx-ota** | OTA 远程更新、Ed25519 签名验证（v0.3+） | — |
 
-### Infrastructure Layer
+### Layer 4 — Runtime
 
 | Crate | 职责 |
 |-------|------|
-| **clawx-vault** | 工作区版本化与回滚（自动版本点、变更集、智能清理） |
-| **clawx-hal** | macOS 硬件抽象层（FSEvents/Keychain/Notification/pf） |
-| **clawx-ota** | OTA 远程更新、Ed25519 签名验证 |
+| **clawx-runtime** | Agent 生命周期、对话编排、Tool 调度、LLM 请求编排、Working Memory（上下文窗口管理与压缩） |
 
-### API / Application Layer
+### Layer 5 — API / Application
 
 | Crate | 职责 |
 |-------|------|
@@ -125,10 +132,10 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 ### 3.1 对话请求流程
 
 ```
-User Input → clawx-api/ffi → clawx-runtime
+User Input → clawx-ffi/cli → controlplane-client → clawx-api → clawx-runtime
   → clawx-security (权限检查)
   → 并行: clawx-memory (记忆召回) + clawx-kb (知识检索)
-  → Prompt 组装 (System + Memory + Knowledge + User)
+  → Prompt 组装 (System + Memory + Knowledge + User)  [由 Runtime 完成, ADR-010]
   → clawx-llm (LLM 调用, 流式输出)
   → clawx-security (DLP 出站扫描)
   → Response → User
@@ -172,6 +179,9 @@ GUI 关闭不影响后台 service 运行。
 ```
 ~/.clawx/
 ├── config.toml          # 全局配置
+├── run/                 # 运行时状态 (UDS socket, control token)
+│   ├── clawx.sock       # Unix Domain Socket
+│   └── control.token    # 本地认证令牌
 ├── db/clawx.db          # SQLite 主数据库
 ├── knowledge/           # Qdrant + Tantivy 索引
 ├── workspace/           # Agent 工作目录 + 产物

@@ -87,7 +87,7 @@ ClawX 的记忆系统是整个 Agent Computer 平台的"灵魂"——它将 Agen
 │  │  │                    │  │  • 通用事实        │              │   │
 │  │  └────────────────────┘  └────────────────────┘              │   │
 │  │                                                               │   │
-│  │  持久化: SQLite + Qdrant (向量索引)                            │   │
+│  │  持久化: SQLite (v0.1) + Qdrant 向量索引 (v0.2+)              │   │
 │  │  衰减: 艾宾浩斯遗忘曲线                                       │   │
 │  │  生命周期 = 永久 (受衰减和清理策略约束)                         │   │
 │  └──────────────────────────────────────────────────────────────┘   │
@@ -962,13 +962,13 @@ pub struct AssembledContext {
 │      命中率目标: > 70%                   │
 │      淘汰: LRU, 超过 200 条时淘汰      │
 │                                         │
-│  L2: Qdrant In-Memory Index             │
-│      小于 1000 条: 全量内存              │
-│      大于 1000 条: on_disk + HNSW 索引   │
-│                                         │
-│  L3: SQLite (磁盘)                      │
+│  L2: SQLite + FTS5 (v0.1)              │
 │      Source of Truth                     │
 │      WAL 模式提升并发读性能              │
+│                                         │
+│  L3: Qdrant In-Memory Index (v0.2+)    │
+│      小于 1000 条: 全量内存              │
+│      大于 1000 条: on_disk + HNSW 索引   │
 └─────────────────────────────────────────┘
 ```
 
@@ -977,9 +977,9 @@ pub struct AssembledContext {
 | 操作 | 优化策略 |
 |------|---------|
 | 记忆衰减 | 批量 SQL UPDATE，避免逐条更新 |
-| 向量写入 | Qdrant batch upsert (每批 <= 100 条) |
-| 记忆合并 | 后台低优先级任务，限制每次合并不超过 50 条 |
-| Embedding | 批量编码 (batch_size = 32)，复用模型实例 |
+| 向量写入 (v0.2+) | Qdrant batch upsert (每批 <= 100 条) |
+| 记忆合并 (v0.2+) | 后台低优先级任务，限制每次合并不超过 50 条 |
+| Embedding (v0.2+) | 批量编码 (batch_size = 32)，复用模型实例 |
 
 ### 8.3 资源占用目标
 
@@ -1007,7 +1007,7 @@ crates/clawx-memory/
     │   ├── session_manager     # Session 生命周期管理
     │   └── promoter            # 晋升评估逻辑
     ├── long_term.rs            # Long-Term Memory 存储与检索
-    │   ├── store               # SQLite + Qdrant 双写存储
+    │   ├── store               # SQLite 存储 (v0.1)；SQLite + Qdrant 双写 (v0.2+)
     │   ├── recall              # 语义召回 + 评分排序
     │   └── filter              # 作用域隔离与过滤
     ├── extraction.rs           # 记忆提取器 (LLM 辅助提取)
@@ -1055,7 +1055,7 @@ clawx-memory 依赖:
 |------|------|
 | Working Memory | 上下文窗口管理 + 自动摘要压缩 |
 | Long-Term Memory (基础) | Agent Memory + User Memory 的 CRUD |
-| 语义召回 (基础) | Qdrant 向量检索 + 重要性/鲜活度加权排序 |
+| 语义召回 (基础) | SQLite FTS5 全文检索 + importance/freshness 加权排序 (ADR-011) |
 | 隐式提取 (基础) | LLM 辅助从对话中提取记忆候选 |
 | 艾宾浩斯衰减 | 定时衰减 + 访问提升 + Pin 永久保留 |
 | GUI 管理 | 查看、编辑、搜索、Pin/Unpin、删除记忆 |
