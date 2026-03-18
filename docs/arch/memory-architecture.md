@@ -1,9 +1,10 @@
 # ClawX 记忆系统架构
 
-**版本:** 1.0
+**版本:** 2.0
 **日期:** 2026年3月18日
 **对应 PRD:** v2.0 §2.3 记忆中心
-**对应架构:** v3.0 clawx-memory 模块
+**对应架构:** v4.1 clawx-memory 模块
+**关联 ADR:** ADR-009, ADR-010, ADR-011, ADR-023, ADR-024, ADR-025
 
 ---
 
@@ -39,7 +40,12 @@ ClawX 的记忆系统是整个 Agent Computer 平台的"灵魂"——它将 Agen
 
 ---
 
-## 2. 三层记忆架构
+## 2. 三层记忆概念模型
+
+> **实现归属说明（ADR-010, ADR-023）：**
+> - **Working Memory（工作记忆）**：概念上属于记忆系统，但**实现归属于 `clawx-runtime`**，负责上下文窗口管理、压缩和 Prompt 组装。Runtime 调用 `clawx-memory` 获取记忆召回结果后自行组装上下文。
+> - **Short-Term Memory + Long-Term Memory**：由 `clawx-memory` crate 实现和管理。
+> - 本节描述三层概念模型以提供完整认知框架，各层的实现 crate 在具体小节中标注。
 
 ### 2.1 架构总览
 
@@ -90,6 +96,8 @@ ClawX 的记忆系统是整个 Agent Computer 平台的"灵魂"——它将 Agen
 
 ### 2.2 Layer 1: Working Memory (工作记忆)
 
+> **实现归属: `clawx-runtime`**（ADR-010）
+
 **职责：** 管理单次对话内的上下文窗口，确保 Agent 在 LLM Token 限制内获得最大化的有效上下文。
 
 **特性：**
@@ -135,6 +143,8 @@ ClawX 的记忆系统是整个 Agent Computer 平台的"灵魂"——它将 Agen
 - 压缩使用同一 LLM 或轻量模型生成摘要，摘要 Token 控制在 `max_tokens * 0.1` 以内
 
 ### 2.3 Layer 2: Short-Term Memory (短期记忆)
+
+> **实现归属: `clawx-memory`**（v0.2 交付）
 
 **职责：** 作为 Working Memory 和 Long-Term Memory 之间的缓冲区，存储当前 Session 内跨对话的临时信息。
 
@@ -186,6 +196,8 @@ Session 结束
 ```
 
 ### 2.4 Layer 3: Long-Term Memory (长期记忆)
+
+> **实现归属: `clawx-memory`**（v0.1 交付）
 
 **职责：** 持久化存储 Agent 的核心知识和用户的个人信息，支持跨时间、跨 Agent 的语义检索。
 
@@ -334,7 +346,11 @@ Session 结束
 
 **触发时机：** 每次 Agent 处理用户输入前，自动召回相关记忆注入 Prompt。
 
-**召回流水线：**
+> **v0.1 vs v0.2 召回策略差异（ADR-011）：**
+> - **v0.1:** 使用 SQLite FTS5 全文检索 + importance/freshness 加权排序，无需 Embedding 向量
+> - **v0.2:** 升级为 Qdrant 向量语义检索 + FTS5 混合召回 + RRF 融合排序
+
+**召回流水线（v0.2 完整版，v0.1 用 FTS5 替代 Qdrant 语义检索步骤）：**
 
 ```
 用户输入
@@ -497,41 +513,60 @@ WHERE freshness < 0.05 AND is_pinned = 0 AND updated_at < date('now', '-7 days')
 
 ### 4.1 存储引擎分工
 
+> **阶段演进说明（ADR-011, ADR-025）：**
+> - **v0.1:** 记忆检索仅使用 SQLite + FTS5（全文检索），不引入 Qdrant 向量索引
+> - **v0.2:** 根据检索效果评估，可升级为 SQLite + Qdrant 双写方案
+> - SQLite 始终为 Source of Truth，Qdrant 为可重建的检索加速索引
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Memory Storage Architecture                  │
+│              Memory Storage Architecture (v0.1)                  │
 │                                                                  │
-│  ┌─────────────────────────┐     ┌─────────────────────────┐    │
-│  │       SQLite             │     │     Qdrant (embedded)   │    │
-│  │    (结构化主存储)         │     │     (向量语义索引)       │    │
-│  │                         │     │                         │    │
-│  │  memories 表             │     │  Collection: "memories" │    │
-│  │  • 完整记忆数据          │     │  • memory_id            │    │
-│  │  • 元数据 (重要性/鲜活度)│     │  • embedding (768维)    │    │
-│  │  • 审计信息              │     │  • payload (scope,      │    │
-│  │  • 变更历史              │     │    agent_id, kind,      │    │
-│  │                         │     │    summary)             │    │
-│  │  memory_audit_log 表     │     │                         │    │
-│  │  • 变更追溯              │     │  Distance: Cosine       │    │
-│  └─────────────────────────┘     └─────────────────────────┘    │
-│              │                              │                    │
-│              │  SQLite 为 Source of Truth    │ Qdrant 为检索加速  │
-│              │  写入时同步双写               │ 可从 SQLite 重建   │
-│              ▼                              ▼                    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │       SQLite (Source of Truth)                            │    │
+│  │                                                          │    │
+│  │  memories 表         │  memories_fts (FTS5 虚拟表)       │    │
+│  │  • 完整记忆数据      │  • summary + content 全文索引     │    │
+│  │  • 元数据            │  • 支持中英文分词检索             │    │
+│  │  • 审计信息          │                                   │    │
+│  │                      │  memory_audit_log 表               │    │
+│  │  short_term_memories │  • 变更追溯                        │    │
+│  │  memory_sessions     │                                   │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│              │                                                   │
+│              ▼                                                   │
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │                    内存缓存层                            │    │
 │  │                                                         │    │
-│  │  • Working Memory: 纯内存 HashMap                       │    │
-│  │  • Short-Term Memory: 内存 + SQLite WAL                 │    │
+│  │  • Working Memory: 纯内存 HashMap (由 clawx-runtime 管理)│    │
+│  │  • Short-Term Memory: 内存 + SQLite WAL (v0.2)          │    │
 │  │  • Hot Long-Term: LRU Cache (最近访问的 Top-200 条)     │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
+
+v0.2 升级后新增:
+┌─────────────────────────┐
+│  Qdrant (embedded)      │
+│  (向量语义索引, 可选)    │
+│                         │
+│  Collection: "memories" │
+│  • memory_id            │
+│  • embedding (768维)    │
+│  • payload (scope,      │
+│    agent_id, kind,      │
+│    summary)             │
+│  Distance: Cosine       │
+│                         │
+│  可从 SQLite 重建       │
+└─────────────────────────┘
 ```
 
-### 4.2 SQLite 表结构 (增强版)
+### 4.2 SQLite 表结构 (权威版本)
+
+> **注意:** 此处为记忆表的权威定义，`data-model.md` 中的 memories 表结构应与此保持一致。
 
 ```sql
--- 长期记忆主表 (增强版，在 data-model.md 基础上扩展)
+-- 长期记忆主表
 CREATE TABLE memories (
     id              TEXT PRIMARY KEY,            -- UUID v4
     scope           TEXT NOT NULL,               -- 'agent' | 'user'
@@ -546,7 +581,7 @@ CREATE TABLE memories (
     source_agent_id TEXT,                        -- 创建该记忆的 Agent ID
     source_type     TEXT NOT NULL DEFAULT 'implicit', -- implicit/explicit/consolidation
     superseded_by   TEXT,                        -- 被哪条记忆取代 (合并/更新时设置)
-    qdrant_point_id TEXT,                        -- Qdrant 向量点 ID
+    qdrant_point_id TEXT,                        -- Qdrant 向量点 ID (v0.2+, v0.1 为 NULL)
     created_at      TEXT NOT NULL,               -- ISO 8601
     last_accessed_at TEXT NOT NULL,
     updated_at      TEXT NOT NULL
@@ -557,6 +592,12 @@ CREATE INDEX idx_memories_freshness ON memories(freshness) WHERE freshness > 0.0
 CREATE INDEX idx_memories_kind ON memories(kind);
 CREATE INDEX idx_memories_active ON memories(scope, freshness)
     WHERE superseded_by IS NULL AND freshness > 0.05;
+
+-- v0.1 全文检索索引 (ADR-011)
+CREATE VIRTUAL TABLE memories_fts USING fts5(
+    summary, content,
+    content='memories', content_rowid='rowid'
+);
 
 -- 记忆审计日志 (追溯每条共享记忆的变更历史)
 CREATE TABLE memory_audit_log (
@@ -596,7 +637,7 @@ CREATE TABLE memory_sessions (
 );
 ```
 
-### 4.3 Qdrant Collection 设计
+### 4.3 Qdrant Collection 设计 (v0.2+)
 
 ```
 Collection: "memories"
@@ -678,7 +719,9 @@ pub trait MemoryService: Send + Sync {
     async fn stats(&self, agent_id: Option<AgentId>) -> Result<MemoryStats>;
 }
 
-/// Working Memory 管理接口 (由 Runtime 调用)
+/// Working Memory 管理接口
+/// 注意: 此 Trait 定义在 clawx-types 中，由 clawx-runtime 实现 (ADR-010)
+/// Runtime 通过 MemoryService::recall() 获取记忆，自行完成上下文组装
 #[async_trait]
 pub trait WorkingMemoryManager: Send + Sync {
     /// 组装 Agent 上下文 (System Prompt + Memory + KB + History)
@@ -857,21 +900,21 @@ pub struct AssembledContext {
 ```
 用户在 Memory Panel 中操作
     │
-    ├── 查看记忆列表 ──────────▶ GET /api/v1/memory?scope=user&page=1
+    ├── 查看记忆列表 ──────────▶ GET /memories?scope=user&page=1
     │                           → memory_service.list(filter, pagination)
     │
-    ├── 编辑记忆内容 ──────────▶ PATCH /api/v1/memory/{id}
+    ├── 编辑记忆内容 ──────────▶ PUT /memories/{id}
     │                           → memory_service.update(update)
     │                           → audit_log: action=updated, agent_id=user_manual
     │
-    ├── 冻结记忆 (Pin) ────────▶ POST /api/v1/memory/{id}/pin
+    ├── 冻结记忆 (Pin) ────────▶ POST /memories/{id}/pin
     │                           → memory_service.toggle_pin(id, true)
     │
-    ├── 删除记忆 ──────────────▶ DELETE /api/v1/memory/{id}
+    ├── 删除记忆 ──────────────▶ DELETE /memories/{id}
     │                           → memory_service.delete(id)
     │                           → audit_log: action=deleted, agent_id=user_manual
     │
-    └── 搜索记忆 ──────────────▶ POST /api/v1/memory/search
+    └── 搜索记忆 ──────────────▶ POST /memories/search
                                 → memory_service.recall(query)
 ```
 
@@ -953,15 +996,14 @@ pub struct AssembledContext {
 
 ### 9.1 clawx-memory crate 模块划分
 
+> **注意:** Working Memory (上下文窗口管理、压缩、Prompt 组装) 由 `clawx-runtime` 实现 (ADR-010)，不在 clawx-memory 内。
+
 ```
 crates/clawx-memory/
 ├── Cargo.toml
 └── src/
     ├── lib.rs                  # 模块入口，导出公共接口
-    ├── working.rs              # Working Memory 管理器实现
-    │   ├── context_assembler   # 上下文组装逻辑
-    │   └── compressor          # 上下文压缩逻辑
-    ├── short_term.rs           # Short-Term Memory 管理器实现
+    ├── short_term.rs           # Short-Term Memory 管理器实现 (v0.2)
     │   ├── session_manager     # Session 生命周期管理
     │   └── promoter            # 晋升评估逻辑
     ├── long_term.rs            # Long-Term Memory 存储与检索
@@ -987,8 +1029,8 @@ crates/clawx-memory/
 ```
 clawx-memory 依赖:
 ├── clawx-types     (记忆类型定义、Trait 接口)
-├── clawx-llm       (记忆提取时调用 LLM、生成 Embedding)
-├── clawx-eventbus  (发布记忆事件: MemoryStored/Recalled/Evicted)
+├── clawx-llm       (记忆提取时调用 LLM；v0.2 生成 Embedding)
+├── clawx-eventbus  (发布记忆事件: MemoryStored/Recalled/Evicted, v0.2 启用)
 ├── tokio           (异步运行时)
 ├── sqlx            (SQLite 访问)
 ├── serde/serde_json(序列化)
@@ -997,10 +1039,11 @@ clawx-memory 依赖:
 └── tracing         (结构化日志)
 
 被依赖于:
-├── clawx-runtime   (对话处理时调用记忆召回和提取)
-├── clawx-api       (REST API 暴露记忆管理接口)
-└── clawx-ffi       (GUI 记忆面板调用)
+├── clawx-runtime   (对话处理时调用记忆召回和提取；Runtime 自行管理 Working Memory)
+└── clawx-api       (REST API 通过 runtime 间接暴露记忆管理接口)
 ```
+
+> **注意:** `clawx-ffi` 和 `clawx-cli` 不直接依赖 clawx-memory，而是通过 `controlplane-client → clawx-api → clawx-runtime → clawx-memory` 链路访问 (ADR-004)。
 
 ---
 
@@ -1061,48 +1104,15 @@ clawx-memory 依赖:
 
 ---
 
-## 12. 架构决策补充
+## 12. 关联架构决策
 
-### ADR-014: 三层记忆架构
+本文档涉及的架构决策已统一收录于 [decisions.md](./decisions.md)：
 
-**状态:** 已采纳
-
-**背景:** PRD 定义了两层作用域 (Agent/User)，但从认知科学角度，记忆系统还需要短期缓冲和上下文管理。
-
-**决策:** 采用三层记忆架构 (Working + Short-Term + Long-Term)，其中 Long-Term 按作用域分为 Agent Memory 和 User Memory。
-
-**理由:**
-- Working Memory 解决 LLM 上下文窗口限制问题
-- Short-Term Memory 解决跨对话但同一 Session 内的信息延续问题
-- Long-Term Memory 实现 PRD 要求的持久化两层记忆
-- 三层架构与人类记忆工作方式类比，提取和晋升机制更自然
-
-### ADR-015: 记忆提取采用 LLM 辅助而非规则引擎
-
-**状态:** 已采纳
-
-**背景:** 从对话中提取值得记忆的信息，可以用规则引擎或 LLM。
-
-**决策:** 以 LLM 辅助提取为主，信号词规则检测为辅助触发器。
-
-**替代方案:**
-- 纯规则引擎：无法理解语义，漏提严重
-- 每轮都调 LLM：Token 开销过大
-
-**理由:**
-- LLM 能理解对话语义，提取质量显著高于规则
-- 通过频率控制 (每 3 轮一次) 和信号词触发平衡开销
-- 信号词检测 ("记住"、"以后"、"我的 xxx 是") 作为低成本的即时触发补充
-
-### ADR-016: SQLite 为记忆 Source of Truth，Qdrant 为检索加速
-
-**状态:** 已采纳
-
-**背景:** 记忆需要同时存储在 SQLite (结构化) 和 Qdrant (向量检索)。
-
-**决策:** SQLite 为 Source of Truth，Qdrant 为可重建的检索索引。写入时双写；Qdrant 数据丢失时可从 SQLite 重建。
-
-**理由:**
-- SQLite 提供事务保证和结构化查询
-- Qdrant 嵌入式模式下数据可能因异常损坏
-- 重建成本可控 (10K 条目重建 Embedding 约 5-10 分钟)
+| ADR | 标题 | 要点 |
+|-----|------|------|
+| ADR-009 | 两层持久化记忆 | v0.1 只做 Agent Memory + User Memory |
+| ADR-010 | Working Context 属于 Runtime | 上下文窗口、压缩、Prompt 组装由 Runtime 负责 |
+| ADR-011 | v0.1 记忆检索用 SQLite + FTS5 | 不为记忆建 Qdrant，v0.2 可升级 |
+| ADR-023 | 三层记忆概念模型 | Working + Short-Term + Long-Term，Working 归 Runtime |
+| ADR-024 | 记忆提取采用 LLM 辅助 | LLM 提取为主，信号词为辅 |
+| ADR-025 | SQLite 为记忆 Source of Truth | Qdrant 为可重建的检索加速索引 (v0.2+) |

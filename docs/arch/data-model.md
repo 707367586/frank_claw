@@ -1,7 +1,7 @@
 # ClawX 数据模型与存储架构
 
-**版本:** 3.0
-**日期:** 2026年3月17日
+**版本:** 3.1
+**日期:** 2026年3月18日
 
 ---
 
@@ -61,27 +61,40 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at);
 
 ### 2.2 记忆系统
 
+> **权威定义见 [memory-architecture.md](./memory-architecture.md) §4.2**，此处保持同步。
+
 ```sql
--- 长期记忆
+-- 长期记忆 (与 memory-architecture.md §4.2 保持一致)
 CREATE TABLE memories (
-    id          TEXT PRIMARY KEY,
-    scope       TEXT NOT NULL,              -- 'agent' | 'user'
-    agent_id    TEXT,                       -- scope='agent' 时关联的 Agent ID
-    type        TEXT NOT NULL,              -- fact/preference/event/skill
-    summary     TEXT NOT NULL,              -- 记忆摘要
-    content     TEXT NOT NULL,              -- JSON: 详细内容 (JSONB)
-    importance  REAL NOT NULL DEFAULT 5.0,  -- 0-10 重要性评分
-    freshness   REAL NOT NULL DEFAULT 1.0,  -- 0-1 鲜活度 (艾宾浩斯衰减)
-    access_count INTEGER NOT NULL DEFAULT 0,
-    is_pinned   INTEGER NOT NULL DEFAULT 0, -- 永久保留标记
-    source_agent_id TEXT,                   -- 来源 Agent ID
-    embedding   BLOB,                       -- 记忆向量 (用于语义检索)
-    created_at  TEXT NOT NULL,
+    id              TEXT PRIMARY KEY,            -- UUID v4
+    scope           TEXT NOT NULL,               -- 'agent' | 'user'
+    agent_id        TEXT,                        -- scope='agent' 时关联的 Agent ID
+    kind            TEXT NOT NULL,               -- fact/preference/event/skill
+    summary         TEXT NOT NULL,               -- 记忆摘要 (用于展示和快速匹配)
+    content         TEXT NOT NULL,               -- JSON: 详细结构化内容
+    importance      REAL NOT NULL DEFAULT 5.0,   -- 0-10 重要性评分
+    freshness       REAL NOT NULL DEFAULT 1.0,   -- 0-1 鲜活度 (艾宾浩斯衰减)
+    access_count    INTEGER NOT NULL DEFAULT 0,  -- 累计访问次数
+    is_pinned       INTEGER NOT NULL DEFAULT 0,  -- 永久保留标记
+    source_agent_id TEXT,                        -- 创建该记忆的 Agent ID
+    source_type     TEXT NOT NULL DEFAULT 'implicit', -- implicit/explicit/consolidation
+    superseded_by   TEXT,                        -- 被哪条记忆取代 (合并/更新时设置)
+    qdrant_point_id TEXT,                        -- Qdrant 向量点 ID (v0.2+, v0.1 为 NULL)
+    created_at      TEXT NOT NULL,               -- ISO 8601
     last_accessed_at TEXT NOT NULL,
-    updated_at  TEXT NOT NULL
+    updated_at      TEXT NOT NULL
 );
 CREATE INDEX idx_memories_scope ON memories(scope, agent_id);
-CREATE INDEX idx_memories_freshness ON memories(freshness);
+CREATE INDEX idx_memories_freshness ON memories(freshness) WHERE freshness > 0.05;
+CREATE INDEX idx_memories_kind ON memories(kind);
+CREATE INDEX idx_memories_active ON memories(scope, freshness)
+    WHERE superseded_by IS NULL AND freshness > 0.05;
+
+-- v0.1 全文检索索引 (ADR-011)
+CREATE VIRTUAL TABLE memories_fts USING fts5(
+    summary, content,
+    content='memories', content_rowid='rowid'
+);
 ```
 
 ### 2.3 知识库
@@ -262,15 +275,19 @@ Collection: "knowledge"
     ├── content_preview: string (前 200 字符)
     └── created_at: string
 
-Collection: "memories"
-├── vector_size: 768
+Collection: "memories" (v0.2+, ADR-011: v0.1 使用 SQLite FTS5)
+├── vector_size: 768 (nomic-embed-text)
 ├── distance: Cosine
+├── on_disk: true
 └── payload:
-    ├── memory_id: string
-    ├── scope: string
-    ├── agent_id: string (optional)
+    ├── memory_id: string (indexed)
+    ├── scope: string (indexed, filterable)
+    ├── agent_id: string (indexed, filterable)
+    ├── kind: string (indexed, filterable)
     ├── summary: string
-    └── type: string
+    ├── importance: float (indexed, filterable)
+    ├── freshness: float (indexed, filterable)
+    └── created_at: datetime
 ```
 
 ### 3.2 混合检索流程

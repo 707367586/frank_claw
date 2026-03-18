@@ -1,7 +1,7 @@
 # ClawX Crate 依赖关系图
 
-**版本:** 3.0
-**日期:** 2026年3月17日
+**版本:** 4.0
+**日期:** 2026年3月18日
 
 ---
 
@@ -18,15 +18,20 @@ Layer 2 (Domain)        clawx-llm  clawx-security  clawx-vault  clawx-scheduler
                           │  │         │               │           │
                           │  │    clawx-channel   clawx-artifact  │
                           │  │         │                           │
-Layer 3 (Services)   clawx-memory  clawx-kb  clawx-skills  clawx-gateway  clawx-ota
-                          │          │            │              │
-Layer 4 (Runtime)         └──────────┴────────────┘              │
-                              clawx-runtime                      │
-                                   │                             │
-Layer 5 (API/Apps)          clawx-api   clawx-ffi   clawx-daemon
-                              │           │              │
-                        clawx-service   clawx-cli
+Layer 3 (Services)   clawx-memory  clawx-kb  clawx-skills         clawx-ota
+                          │          │            │
+Layer 4 (Runtime)         └──────────┴────────────┘
+                              clawx-runtime
+                                   │
+Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
+                              │              │          │
+                        clawx-service   clawx-ffi   clawx-cli
 ```
+
+**说明:**
+- `clawx-daemon` 已移除，健康自检内置于 `clawx-service`（ADR-005）
+- `clawx-gateway` 已移除，IM 路由内置于 `clawx-channel`（ADR-021）
+- `clawx-ffi` / `clawx-cli` 通过 `clawx-controlplane-client` 访问 API，不直接依赖 runtime（ADR-004）
 
 ---
 
@@ -51,7 +56,8 @@ Layer 5 (API/Apps)          clawx-api   clawx-ffi   clawx-daemon
 依赖: clawx-types
 外部: tokio, tracing, async-trait
 被依赖: clawx-security, clawx-memory, clawx-vault, clawx-kb, clawx-skills,
-        clawx-scheduler, clawx-channel, clawx-artifact, clawx-daemon, clawx-service
+        clawx-scheduler, clawx-channel, clawx-artifact, clawx-service
+说明: v0.1 暂不启用，v0.2 才引入 (ADR-007)
 ```
 
 ### clawx-hal (Layer 1)
@@ -87,13 +93,15 @@ Layer 5 (API/Apps)          clawx-api   clawx-ffi   clawx-daemon
 依赖: clawx-types, clawx-eventbus
 外部: tokio, async-trait, tracing
 被依赖: (通过 eventbus 间接驱动 runtime)
+说明: v0.2 扩展执行层 (ADR-021)
 ```
 
 ### clawx-channel (Layer 2)
 ```
 依赖: clawx-types, clawx-eventbus
 外部: tokio, async-trait, tracing
-被依赖: clawx-gateway
+被依赖: clawx-runtime (v0.2)
+说明: v0.2 扩展执行层；IM 消息路由作为内部功能，不再拆分 gateway crate (ADR-021)
 ```
 
 ### clawx-artifact (Layer 2)
@@ -101,6 +109,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-ffi   clawx-daemon
 依赖: clawx-types, clawx-eventbus
 外部: tokio, tracing
 被依赖: (通过 eventbus 间接与 runtime 交互)
+说明: v0.3+ 平台服务层 (ADR-022)
 ```
 
 ### clawx-memory (Layer 3)
@@ -108,27 +117,22 @@ Layer 5 (API/Apps)          clawx-api   clawx-ffi   clawx-daemon
 依赖: clawx-types, clawx-llm, clawx-eventbus
 外部: tokio, async-trait, sqlx, serde, serde_json, tracing, chrono, uuid
 被依赖: clawx-runtime
+说明: v0.1 负责 Short-Term + Long-Term 持久化记忆；Working Memory 由 clawx-runtime 实现 (ADR-010)
 ```
 
 ### clawx-kb (Layer 3)
 ```
 依赖: clawx-types, clawx-llm, clawx-eventbus
 外部: tokio, async-trait, tracing
-被依赖: clawx-runtime (计划中)
+被依赖: clawx-runtime
 ```
 
 ### clawx-skills (Layer 3)
 ```
 依赖: clawx-types, clawx-security, clawx-eventbus
 外部: tokio, async-trait, tracing
-被依赖: clawx-runtime (计划中, v0.2)
-```
-
-### clawx-gateway (Layer 3)
-```
-依赖: clawx-types, clawx-channel
-外部: tokio, tracing
-被依赖: clawx-api
+被依赖: clawx-runtime (v0.2)
+说明: v0.2 扩展执行层 (ADR-021)
 ```
 
 ### clawx-ota (Layer 3)
@@ -136,46 +140,52 @@ Layer 5 (API/Apps)          clawx-api   clawx-ffi   clawx-daemon
 依赖: clawx-types, clawx-hal
 外部: tokio, tracing
 被依赖: (独立模块)
+说明: v0.3+ 平台服务层 (ADR-022)
 ```
 
 ### clawx-runtime (Layer 4)
 ```
 依赖: clawx-types, clawx-llm, clawx-memory, clawx-security, clawx-eventbus, clawx-vault
 外部: tokio, async-trait, serde, serde_json, tracing, uuid
-被依赖: clawx-api, clawx-ffi, clawx-daemon, clawx-service, clawx-cli
+被依赖: clawx-api, clawx-service
+说明: 包含 Working Memory 管理（上下文窗口、压缩、Prompt 组装）(ADR-010)
 ```
 
 ### clawx-api (Layer 5)
 ```
-依赖: clawx-types, clawx-runtime, clawx-gateway
+依赖: clawx-types, clawx-runtime
 外部: tokio, axum, tracing
-被依赖: (顶层模块)
+被依赖: clawx-service, clawx-controlplane-client (作为 server 端)
+```
+
+### clawx-controlplane-client (Layer 5)
+```
+依赖: clawx-types
+外部: tokio, reqwest (UDS), serde, serde_json, tracing
+被依赖: clawx-ffi, clawx-cli
+说明: 本地控制平面客户端共享库，通过 UDS/HTTP 连接 clawx-api (ADR-004)
 ```
 
 ### clawx-ffi (Layer 5)
 ```
-依赖: clawx-types, clawx-runtime
+依赖: clawx-types, clawx-controlplane-client
 外部: tokio, tracing
 被依赖: SwiftUI GUI (编译时链接)
-```
-
-### clawx-daemon (Layer 5)
-```
-依赖: clawx-types, clawx-eventbus, clawx-runtime
-外部: tokio, tracing
-被依赖: clawx-service
+说明: 不直接依赖 runtime，通过 controlplane-client 间接访问 (ADR-004)
 ```
 
 ### clawx-service (App)
 ```
-依赖: clawx-types, clawx-runtime, clawx-config, clawx-daemon, clawx-eventbus
+依赖: clawx-types, clawx-runtime, clawx-api, clawx-config, clawx-eventbus
 外部: tokio, tracing, tracing-subscriber, anyhow
+说明: 后台主进程，由 launchd 守护，内含健康自检 (ADR-005)
 ```
 
 ### clawx-cli (App)
 ```
-依赖: clawx-types, clawx-runtime, clawx-config
-外部: tokio, tracing, tracing-subscriber, anyhow
+依赖: clawx-types, clawx-controlplane-client, clawx-config
+外部: tokio, tracing, tracing-subscriber, anyhow, clap
+说明: 不直接依赖 runtime，通过 controlplane-client 间接访问 (ADR-004)
 ```
 
 ---
@@ -188,8 +198,9 @@ Layer 5 (API/Apps)          clawx-api   clawx-ffi   clawx-daemon
 |------|------|
 | 下层不依赖上层 | types 不得依赖任何其他 crate |
 | Domain 不依赖 API | 领域层不感知接口层 |
-| Infrastructure 不依赖 Domain | vault/hal/daemon 不直接依赖 memory/kb/skills |
+| Infrastructure 不依赖 Domain | vault/hal 不直接依赖 memory/kb/skills |
 | 模块间通过 EventBus 解耦 | 避免 scheduler → runtime 直接依赖 |
+| ffi/cli 不直接依赖 runtime | 统一通过 controlplane-client (ADR-004) |
 
 ### 3.2 共享类型规则
 

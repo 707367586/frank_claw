@@ -11,7 +11,7 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 **设计原则：**
 - **本地优先**：所有核心能力本地闭环，无需云端依赖
 - **Trait 驱动**：后端通过 Trait 抽象，可插拔替换
-- **安全纵深**：12 层纵深防御，T1/T2/T3 分级执行
+- **安全纵深**：12 层纵深防御（L1-L12），三级执行隔离（T1 沙箱/T2 受限/T3 原生）
 - **事件驱动**：模块间 EventBus 解耦（v0.1 先用 Trait 直调）
 
 ### 1.1 系统架构图
@@ -21,11 +21,13 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 │                        Presentation Layer                           │
 │  SwiftUI GUI │ CLI (clawx) │ IM Channels (Lark/TG/Slack…) │ iOS   │
 └───────┬────────────┬────────────────┬───────────────────┬──────────┘
-        │ FFI        │ direct         │                   │ Cloud Relay
+        │ FFI        │ CLI            │                   │ Cloud Relay
         ▼            ▼                ▼                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         API / Gateway Layer                         │
-│  clawx-api (REST/Axum) │ clawx-gateway (路由) │ clawx-ffi (桥接)   │
+│                    Control Plane / API Layer                         │
+│  clawx-ffi ─┐                                                       │
+│              ├─▶ clawx-controlplane-client ──▶ clawx-api (REST/Axum)│
+│  clawx-cli ─┘                                                       │
 └─────────┬──────────────────┬──────────────────────┬────────────────┘
           ▼                  ▼                      ▼
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -44,8 +46,7 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
           ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                       Infrastructure Layer                          │
-│  clawx-vault │ clawx-hal │ clawx-daemon │ clawx-ota               │
-│  clawx-config│ clawx-types                                         │
+│  clawx-vault │ clawx-hal │ clawx-ota │ clawx-config │ clawx-types │
 └─────────────────────────────────────────────────────────────────────┘
           │
           ▼
@@ -84,14 +85,14 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 | Crate | 职责 |
 |-------|------|
 | **clawx-eventbus** | 异步 Pub/Sub 事件总线（v0.1 用 Trait 直调，v0.2 启用） |
-| **clawx-runtime** | Agent 生命周期、对话编排、Tool 调度、LLM 请求编排 |
+| **clawx-runtime** | Agent 生命周期、对话编排、Tool 调度、LLM 请求编排、Working Memory（上下文窗口管理与压缩） |
 
 ### Domain Services Layer
 
 | Crate | 职责 | 详细设计 |
 |-------|------|---------|
 | **clawx-llm** | LLM 多模型管理、智能路由、预算追踪、MCP 工具集成 | — |
-| **clawx-memory** | 四层记忆系统（Working/Short-Term/Long-Term/Reflection） | [memory-architecture.md](./memory-architecture.md) |
+| **clawx-memory** | 持久化记忆系统（Short-Term/Long-Term），语义召回与衰减 | [memory-architecture.md](./memory-architecture.md) |
 | **clawx-kb** | 知识库引擎：FSEvents 监控、多格式解析、混合检索 | — |
 | **clawx-security** | 12 层纵深防御、分级执行模型 | [security-architecture.md](./security-architecture.md) |
 | **clawx-skills** | Skills 执行引擎、WASM 沙箱、MCP 客户端 | — |
@@ -105,18 +106,17 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 |-------|------|
 | **clawx-vault** | 工作区版本化与回滚（自动版本点、变更集、智能清理） |
 | **clawx-hal** | macOS 硬件抽象层（FSEvents/Keychain/Notification/pf） |
-| **clawx-daemon** | launchd 集成 + 进程内健康自检（非独立守护进程） |
 | **clawx-ota** | OTA 远程更新、Ed25519 签名验证 |
 
 ### API / Application Layer
 
 | Crate | 职责 |
 |-------|------|
-| **clawx-api** | REST API (Axum)：/agents, /conversations, /memory, /knowledge, /tasks, /system |
-| **clawx-gateway** | IM 消息 → Agent 路由 |
-| **clawx-ffi** | SwiftUI ↔ Rust FFI 薄层桥接 |
-| **clawx-service** | 后台守护主进程（macOS Launch Agent） |
-| **clawx-cli** | 命令行交互工具 |
+| **clawx-api** | REST API (Axum)：/agents, /conversations, /memories, /knowledge, /tasks, /system |
+| **clawx-controlplane-client** | 本地控制平面客户端共享库，GUI/CLI 统一通过此访问 clawx-service |
+| **clawx-ffi** | SwiftUI ↔ Rust FFI 薄层桥接，内部调用 clawx-controlplane-client |
+| **clawx-service** | 后台守护主进程（macOS Launch Agent，含健康自检，由 launchd 管理生命周期） |
+| **clawx-cli** | 命令行交互工具，内部调用 clawx-controlplane-client |
 
 ---
 
@@ -158,11 +158,11 @@ macOS launchd (KeepAlive + RunAtLoad, 崩溃重启 < 5s)
     ▼
 clawx-service (后台, 无 UI)          ClawX.app (GUI)
 ├── Runtime Engine                    ├── SwiftUI Views
-├── Scheduler Engine                  └── FFI → Rust Core
-├── API Server (127.0.0.1:19200)
+├── Scheduler Engine                  └── FFI → controlplane-client → API
+├── API Server (UDS ~/.clawx/run/clawx.sock)
 ├── KB Engine (后台索引)
 ├── Channel Listener
-└── Daemon (健康自检)
+└── 健康自检 (内置于 service)
 ```
 
 GUI 关闭不影响后台 service 运行。
@@ -189,7 +189,7 @@ iOS App ◀══ HTTPS ══▶ Cloud Relay ◀══ WSS ══▶ Mac clawx-
                   (E2E X25519 加密, Relay 不可解密)
 ```
 
-Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓存 (TTL 7天)。依赖 v0.3+ 账号体系。
+Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓存 (TTL 7天)。依赖 v0.3+ 账号体系。PRD 中提及的 Tailscale/WireGuard 作为替代方案保留评估 (ADR-026)。
 
 ---
 
@@ -208,9 +208,9 @@ Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓
 
 | 阶段 | 核心模块 |
 |------|---------|
-| **v0.1** | types, config, llm, runtime, memory, kb, vault, security(7层基线), daemon, ffi, api |
-| **v0.2** | skills, scheduler, channel, gateway, security(完整12层), eventbus, MCP |
-| **v0.3+** | artifact, ota, hal(完整), 账号/同步, Cloud Relay, 移动端 |
+| **v0.1** | types, config, llm, runtime, memory, kb, vault, security(7层基线), controlplane-client, ffi, api, service, cli |
+| **v0.2** | skills, scheduler, channel, security(完整12层), eventbus, MCP, 自主性能力(ReAct/反思/信任) |
+| **v0.3+** | artifact, ota, hal(完整), 账号/同步, Cloud Relay, 移动端, 多Agent协作, Computer Use |
 | **v1.0+** | HireClaw 社区、商业化 |
 
 ---
@@ -226,6 +226,6 @@ Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓
 | 向量检索 | Qdrant embedded + Tantivy BM25 + RRF | 混合检索效果显著优于单一 |
 | 沙箱 | Wasmtime WASM + 双计量 | 燃料+纪元防 DoS |
 | 凭证安全 | 宿主边界注入 + Zeroizing + Keychain | 密钥永不进沙箱 |
-| GUI-Core | FFI (swift-bridge) | 最低延迟 |
-| 进程守护 | macOS launchd | 系统级最可靠 |
+| GUI/CLI-Core | controlplane-client → API (UDS) | 单入口硬边界 (ADR-003/004) |
+| 进程守护 | macOS launchd（无独立 daemon 进程） | 系统级最可靠 (ADR-005) |
 | 移动端 | Cloud Relay (WSS + E2E) | 零配置，Relay 不解密 |
