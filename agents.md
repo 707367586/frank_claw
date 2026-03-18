@@ -13,12 +13,11 @@ All data processing, memory, and knowledge base run locally for maximum privacy 
 |-------|-----------|
 | Core Runtime | Rust (tokio async) |
 | GUI | SwiftUI (macOS native) |
-| Database | SQLite (default) / PostgreSQL (optional) |
+| Database | SQLite (default) |
 | Vector DB | Qdrant (embedded mode) |
 | Full-text Search | Tantivy (BM25) |
 | Sandbox | Wasmtime (WASM) |
 | Mobile | SwiftUI (iOS) / Jetpack Compose (Android) |
-| Communication | Tailscale / iCloud CloudKit |
 
 ## Project Structure
 
