@@ -11,11 +11,17 @@
 | 存储引擎 | 用途 | 数据类型 |
 |---------|------|---------|
 | **SQLite** | 主数据库 | Agent 配置、对话、记忆、任务、记忆变更审计 (memory_audit_log) |
-| **Qdrant (embedded)** | 向量索引 | 文档 Embedding 向量 |
+| **Qdrant (embedded)** | 向量索引 | 文档 Embedding 向量；记忆 Embedding 向量 (v0.2+, ADR-011) |
 | **Tantivy** | 全文索引 | BM25 倒排索引 |
 | **文件系统** | 工作区/产物 | 用户文件、Agent 产物、版本点 |
 | **JSONL 文件** | 安全审计日志 | SHA-256 哈希链审计记录 (`~/.clawx/audit/`, L12) |
 | **macOS Keychain** | 密钥存储 | API Key、Token、加密密钥 |
+
+> **审计系统分工说明：** ClawX 有两套独立的审计机制，服务于不同目标：
+> - **安全审计日志** (JSONL + 哈希链)：记录所有 Agent 行为、工具调用、风险事件等安全相关操作，存储在 `~/.clawx/audit/`，以追加写入 + SHA-256 哈希链保证不可篡改（见 [security-architecture.md](./security-architecture.md) L12）。
+> - **记忆变更审计** (SQLite `memory_audit_log` 表)：仅追踪 User Memory（共享记忆）的创建、修改、合并、删除操作，用于记忆来源追溯和冲突排查（见 [memory-architecture.md](./memory-architecture.md) §4.2）。
+>
+> 两者分开的原因：安全审计要求不可篡改（哈希链 + 追加写入），适合 JSONL；记忆审计需要结构化查询和关联（按 memory_id 查历史），适合 SQLite 关系表。
 
 ---
 

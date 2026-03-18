@@ -231,8 +231,12 @@ Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓
 |------|---------|
 | **v0.1** | types, config, hal(基础FSEvents/Keychain), llm, runtime, memory(Long-Term), kb, vault, security(7层基线), controlplane-client, ffi, api, service, cli |
 | **v0.2** | skills, scheduler, channel, security(完整12层), eventbus, MCP, memory(+Short-Term), 自主性能力(ReAct/反思/信任) |
-| **v0.3+** | artifact, ota, hal(+Notification/pf完整), 账号/同步, Cloud Relay, 移动端, 多Agent协作, Computer Use |
-| **v1.0+** | HireClaw 社区、商业化 |
+| **v0.3** | artifact, 账号体系, 迁移, 用量统计, hal(+Notification/pf完整) |
+| **v0.4** | ota |
+| **v0.5** | Cloud Relay, 云端备份/同步 |
+| **v1.0+** | HireClaw 社区、商业化、移动端随行、多Agent协作、Computer Use |
+
+> **注:** 阶段划分与 PRD v2.0 §4.1 路线图保持一致。
 
 ---
 

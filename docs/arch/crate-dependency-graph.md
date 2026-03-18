@@ -57,8 +57,9 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 依赖: clawx-types
 外部: tokio, tracing, async-trait
 被依赖: clawx-security, clawx-memory, clawx-vault, clawx-kb, clawx-skills,
-        clawx-scheduler, clawx-channel, clawx-artifact, clawx-service
-说明: v0.1 暂不启用，v0.2 才引入 (ADR-007)
+        clawx-scheduler, clawx-channel, clawx-artifact, clawx-runtime, clawx-service
+说明: v0.1 暂不启用，v0.2 才引入 (ADR-007)。v0.1 中依赖方的 eventbus 调用路径为空实现（no-op），
+      各依赖方通过 "(v0.2 启用)" 标注表示该依赖在 v0.1 不生效。
 ```
 
 ### clawx-hal (Layer 1)
@@ -78,7 +79,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 
 ### clawx-security (Layer 2)
 ```
-依赖: clawx-types, clawx-config, clawx-eventbus, clawx-hal
+依赖: clawx-types, clawx-config, clawx-eventbus(v0.2 启用), clawx-hal
 外部: tokio, async-trait, regex, tracing, chrono
 被依赖: clawx-skills, clawx-runtime
 说明: 通过 clawx-hal 访问 Keychain 实现 L3 凭证注入 (ADR-016, ADR-019)
@@ -86,7 +87,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 
 ### clawx-vault (Layer 2)
 ```
-依赖: clawx-types, clawx-eventbus
+依赖: clawx-types, clawx-eventbus(v0.2 启用)
 外部: tokio, tracing, chrono
 被依赖: clawx-runtime
 ```
@@ -117,7 +118,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 
 ### clawx-memory (Layer 3)
 ```
-依赖: clawx-types, clawx-llm, clawx-eventbus
+依赖: clawx-types, clawx-llm, clawx-eventbus(v0.2 启用)
 外部: tokio, async-trait, sqlx, serde, serde_json, tracing, chrono, uuid
 被依赖: clawx-runtime
 说明: v0.1 负责 Long-Term 持久化记忆 (Agent/User Memory)；v0.2 新增 Short-Term Memory；Working Memory 由 clawx-runtime 实现 (ADR-009, ADR-010)
@@ -125,7 +126,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 
 ### clawx-kb (Layer 3)
 ```
-依赖: clawx-types, clawx-llm, clawx-eventbus, clawx-hal
+依赖: clawx-types, clawx-llm, clawx-eventbus(v0.2 启用), clawx-hal
 外部: tokio, async-trait, tracing
 被依赖: clawx-runtime
 说明: 通过 clawx-hal 获取 FSEvents 文件监控能力 (ADR-019)
@@ -133,7 +134,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 
 ### clawx-skills (Layer 3)
 ```
-依赖: clawx-types, clawx-security, clawx-eventbus
+依赖: clawx-types, clawx-security, clawx-eventbus(v0.2 启用)
 外部: tokio, async-trait, tracing
 被依赖: clawx-runtime (v0.2)
 说明: v0.2 扩展执行层 (ADR-021)
@@ -149,10 +150,10 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 
 ### clawx-runtime (Layer 4)
 ```
-依赖: clawx-types, clawx-llm, clawx-memory, clawx-security, clawx-eventbus, clawx-vault
+依赖: clawx-types, clawx-llm, clawx-memory, clawx-kb, clawx-security, clawx-eventbus(v0.2 启用), clawx-vault
 外部: tokio, async-trait, serde, serde_json, tracing, uuid
 被依赖: clawx-api, clawx-service
-说明: 包含 Working Memory 管理（上下文窗口、压缩、Prompt 组装）(ADR-010)
+说明: 包含 Working Memory 管理（上下文窗口、压缩、Prompt 组装）(ADR-010)；编排记忆召回与知识检索并行执行
 ```
 
 ### clawx-api (Layer 5)
@@ -180,7 +181,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 
 ### clawx-service (App)
 ```
-依赖: clawx-types, clawx-runtime, clawx-api, clawx-config, clawx-eventbus
+依赖: clawx-types, clawx-runtime, clawx-api, clawx-config, clawx-eventbus(v0.2 启用)
 外部: tokio, tracing, tracing-subscriber, anyhow
 说明: 后台主进程，由 launchd 守护，内含健康自检 (ADR-005)
 ```
