@@ -1,8 +1,8 @@
 # ClawX 数据模型与存储架构
 
-**版本:** 3.2
+**版本:** 3.3
 **日期:** 2026年3月18日
-**对应架构:** v4.1
+**对应架构:** v4.2
 
 ---
 
@@ -186,25 +186,108 @@ CREATE INDEX idx_usage_date ON usage_stats(date);
 CREATE INDEX idx_usage_agent ON usage_stats(agent_id, date);
 ```
 
-### 2.5 定时任务 (v0.2)
+### 2.5 主动任务系统 (v0.2)
+
+> **权威定义见 [autonomy-architecture.md](./autonomy-architecture.md) §8**，此处与其保持一致。
+> v0.2 对外开放 `time/event` 触发；`context/policy` 只保留枚举和扩展位，不作为默认开放能力。
 
 ```sql
--- 定时/事件驱动任务 (v0.2, clawx-scheduler)
-CREATE TABLE scheduled_tasks (
-    id          TEXT PRIMARY KEY,
-    agent_id    TEXT NOT NULL REFERENCES agents(id),
-    name        TEXT NOT NULL,
-    trigger_type TEXT NOT NULL,             -- cron/event/context/policy
-    trigger_rule TEXT NOT NULL,             -- Cron 表达式或事件规则 JSON
-    prompt      TEXT NOT NULL,              -- Agent 执行的 Prompt
-    notify_channels TEXT DEFAULT '[]',      -- JSON: 通知渠道列表
-    status      TEXT NOT NULL DEFAULT 'active', -- active/paused/error
-    last_run_at TEXT,
-    next_run_at TEXT,
-    last_result TEXT,                       -- 最后一次执行结果摘要
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL
+-- 任务定义：描述“做什么”
+CREATE TABLE tasks (
+    id                TEXT PRIMARY KEY,
+    agent_id          TEXT NOT NULL REFERENCES agents(id),
+    name              TEXT NOT NULL,
+    goal              TEXT NOT NULL,              -- 标准化后的执行目标
+    source_kind       TEXT NOT NULL,              -- conversation/manual/suggestion/imported
+    lifecycle_status  TEXT NOT NULL DEFAULT 'active', -- active/paused/archived
+    default_max_steps INTEGER NOT NULL DEFAULT 10,
+    default_timeout_secs INTEGER NOT NULL DEFAULT 1800,
+    notification_policy TEXT NOT NULL DEFAULT '{}', -- JSON: quiet_hours/cooldown/digest 等
+    suppression_state TEXT NOT NULL DEFAULT 'normal', -- normal/cooldown/paused_by_feedback
+    last_run_at       TEXT,
+    next_run_at       TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
 );
+CREATE INDEX idx_tasks_agent_status ON tasks(agent_id, lifecycle_status);
+
+-- 触发器：描述“何时做”
+CREATE TABLE task_triggers (
+    id                TEXT PRIMARY KEY,
+    task_id           TEXT NOT NULL REFERENCES tasks(id),
+    trigger_kind      TEXT NOT NULL,              -- time/event/context/policy
+    trigger_config    TEXT NOT NULL,              -- JSON: cron/event filter/context rule/policy rule
+    status            TEXT NOT NULL DEFAULT 'active', -- active/paused
+    next_fire_at      TEXT,
+    last_fired_at     TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+CREATE INDEX idx_task_triggers_task ON task_triggers(task_id, status);
+CREATE INDEX idx_task_triggers_next_fire ON task_triggers(next_fire_at) WHERE status = 'active';
+
+-- Run：一次真正发生的执行实例
+CREATE TABLE task_runs (
+    id                TEXT PRIMARY KEY,
+    task_id           TEXT NOT NULL REFERENCES tasks(id),
+    trigger_id        TEXT REFERENCES task_triggers(id),
+    idempotency_key   TEXT NOT NULL UNIQUE,
+    run_status        TEXT NOT NULL,              -- queued/planning/running/waiting_confirmation/completed/failed/interrupted
+    attempt           INTEGER NOT NULL DEFAULT 1,
+    lease_owner       TEXT,                       -- 当前持有该 run 的 service 实例
+    lease_expires_at  TEXT,
+    checkpoint        TEXT NOT NULL DEFAULT '{}', -- JSON: steps/outputs/pending confirmation
+    tokens_used       INTEGER NOT NULL DEFAULT 0,
+    steps_count       INTEGER NOT NULL DEFAULT 0,
+    result_summary    TEXT,
+    failure_reason    TEXT,
+    feedback_kind     TEXT,                       -- accepted/ignored/rejected/mute_forever/reduce_frequency
+    feedback_reason   TEXT,
+    notification_status TEXT NOT NULL DEFAULT 'pending', -- pending/sent/failed/suppressed
+    triggered_at      TEXT NOT NULL,
+    started_at        TEXT,
+    finished_at       TEXT,
+    created_at        TEXT NOT NULL
+);
+CREATE INDEX idx_task_runs_task_time ON task_runs(task_id, triggered_at DESC);
+CREATE INDEX idx_task_runs_status ON task_runs(run_status, lease_expires_at);
+
+-- 通知递送结果：记录是发了、失败了，还是被抑制了
+CREATE TABLE task_notifications (
+    id                TEXT PRIMARY KEY,
+    run_id            TEXT NOT NULL REFERENCES task_runs(id),
+    channel_kind      TEXT NOT NULL,              -- desktop/im/file
+    target_ref        TEXT,                       -- channel id / file path / desktop
+    delivery_status   TEXT NOT NULL,              -- pending/sent/failed/suppressed/digest_queued
+    suppression_reason TEXT,
+    payload_summary   TEXT,
+    delivered_at      TEXT,
+    created_at        TEXT NOT NULL
+);
+CREATE INDEX idx_task_notifications_run ON task_notifications(run_id, delivery_status);
+
+-- 权限档案：按 Agent、按能力维度维护信任向量
+CREATE TABLE permission_profiles (
+    agent_id          TEXT PRIMARY KEY REFERENCES agents(id),
+    capability_scores TEXT NOT NULL DEFAULT '{}', -- JSON: knowledge_read/workspace_write/external_send/memory_write/shell_exec
+    safety_incidents  INTEGER NOT NULL DEFAULT 0,
+    last_downgraded_at TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+
+-- 权限变更审计
+CREATE TABLE permission_events (
+    id                TEXT PRIMARY KEY,
+    agent_id          TEXT NOT NULL REFERENCES agents(id),
+    capability        TEXT NOT NULL,
+    old_level         TEXT NOT NULL,
+    new_level         TEXT NOT NULL,
+    reason            TEXT NOT NULL,
+    run_id            TEXT REFERENCES task_runs(id),
+    created_at        TEXT NOT NULL
+);
+CREATE INDEX idx_permission_events_agent_time ON permission_events(agent_id, created_at DESC);
 ```
 
 ### 2.6 工作区版本管理

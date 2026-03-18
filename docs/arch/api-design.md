@@ -1,6 +1,6 @@
-# ClawX API 设计 v4.1
+# ClawX API 设计 v4.2
 
-**日期:** 2026-03-18 | **对应架构:** v4.1
+**日期:** 2026-03-18 | **对应架构:** v4.2
 
 ---
 
@@ -49,7 +49,8 @@ ClawX 的接口设计围绕**本地控制平面**展开：
 SSE 事件格式：
 
 - `delta`
-- `tool_call`
+- `execution_step`
+- `confirmation_required`
 - `done`
 - `error`
 
@@ -83,10 +84,14 @@ SSE 事件格式：
 
 | 模块 | 端点 |
 |------|------|
-| 任务 | `/tasks` |
+| 任务 | `GET/POST /tasks`、`GET/PUT/DELETE /tasks/:id` |
+| Trigger | `POST /tasks/:id/triggers`、`PUT/DELETE /task-triggers/:id` |
+| Run | `GET /tasks/:id/runs`、`GET /task-runs/:id` |
+| 反馈 | `POST /task-runs/:id/feedback` |
+| 生命周期 | `POST /tasks/:id/pause`、`/resume`、`/archive` |
+| 权限档案 | `GET /agents/:id/permission-profile` |
 | 渠道 | `/channels` |
 | Skills | `/skills` |
-| 调度 | `/schedules` |
 
 ---
 
@@ -102,6 +107,7 @@ SSE 事件格式：
 - `403` 权限不足
 - `404` 资源不存在
 - `409` 状态冲突
+- `423` 资源被占用（如 Run lease 未释放）
 - `429` 限流
 - `500` 内部错误
 
@@ -123,7 +129,8 @@ SwiftUI View / CLI Command
 
 1. `clawx-ffi` 与 `clawx-cli` 不持有长期 runtime state
 2. 所有状态变更请求都必须经由 `clawx-api`
-3. 预览、诊断或测试优先走 mock server / test server，而不是直连 runtime
+3. `/tasks` 是主动任务的唯一控制面端点，不再额外暴露 `/schedules`
+4. 预览、诊断或测试优先走 mock server / test server，而不是直连 runtime
 
 ### 4.3 FFI 示例
 

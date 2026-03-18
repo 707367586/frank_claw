@@ -1,4 +1,4 @@
-# ClawX Architecture v4.1
+# ClawX Architecture v4.2
 
 **日期:** 2026-03-18 | **对应 PRD:** v2.0
 
@@ -33,6 +33,7 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 ┌─────────────────────────────────────────────────────────────────────┐
 │             Layer 4: Core Runtime Layer                              │
 │  clawx-runtime: Agent 生命周期 │ 对话编排 │ Tool 调度 │ 上下文管理  │
+│                  自主性(Task/Run/Permission/Attention)              │
 └─────────────────────────────────────────────────────────────────────┘
           │
           ▼
@@ -90,7 +91,7 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 
 | Crate | 职责 | 核心内容 |
 |-------|------|---------|
-| **clawx-types** | 全局类型、Trait 接口 | AgentId, Memory, Message, ClawxError, 核心 Trait |
+| **clawx-types** | 全局类型、Trait 接口 | AgentId, Memory, Message, ClawxError, 核心 Trait, `TaskRegistryPort`, `NotificationPort` |
 
 ### Layer 1 — Config / Infrastructure
 
@@ -107,8 +108,8 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 | **clawx-llm** | LLM 多模型管理、智能路由、预算追踪、MCP 工具集成 | — |
 | **clawx-security** | 12 层纵深防御、分级执行模型 | [security-architecture.md](./security-architecture.md) |
 | **clawx-vault** | 工作区版本化与回滚（自动版本点、变更集、智能清理） | — |
-| **clawx-scheduler** | Cron 定时 + 事件驱动调度（v0.2） | — |
-| **clawx-channel** | IM 统一接入，含消息路由（v0.2） | — |
+| **clawx-scheduler** | `time/event` 触发源、Cron 解析、触发投递（v0.2） | — |
+| **clawx-channel** | IM 统一接入与通知递送适配（v0.2） | — |
 | **clawx-artifact** | Agent 产物管理、预览、导出（v0.3） | — |
 
 ### Layer 3 — Services
@@ -124,7 +125,7 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 
 | Crate | 职责 |
 |-------|------|
-| **clawx-runtime** | Agent 生命周期、对话编排、Tool 调度、LLM 请求编排、Working Memory（上下文窗口管理与压缩） |
+| **clawx-runtime** | Agent 生命周期、对话编排、Tool 调度、LLM 请求编排、Working Memory，以及自主性子模块（Task Manager / Executor / Permission Gate / Attention Policy） |
 
 ### Layer 5 — API / Application
 
@@ -155,7 +156,13 @@ User Input → clawx-ffi/cli → controlplane-client → clawx-api → clawx-run
 ### 3.2 主动式 Agent
 
 ```
-clawx-scheduler (Cron) → clawx-eventbus → clawx-runtime (Agent 执行) → clawx-channel (结果推送)
+v0.2:
+clawx-scheduler (time/event) → clawx-eventbus → clawx-runtime Task Manager
+  → Executor → Attention Policy → NotificationPort
+  → clawx-channel / macOS Notification / 文件写入
+
+v0.3+:
+context/policy 信号由 runtime / memory 产生候选触发，先 Shadow Mode 评估后再开放
 ```
 
 ### 3.3 知识库索引
@@ -176,7 +183,8 @@ macOS launchd (KeepAlive + RunAtLoad, 崩溃重启 < 5s)
     ▼
 clawx-service (后台, 无 UI)          ClawX.app (GUI)
 ├── Runtime Engine                    ├── SwiftUI Views
-├── Scheduler Engine                  └── FFI → controlplane-client → API
+├── Composition Root (ports wiring)   └── FFI → controlplane-client → API
+├── Scheduler Engine
 ├── API Server (UDS ~/.clawx/run/clawx.sock)
 ├── KB Engine (后台索引)
 ├── Channel Listener
@@ -230,7 +238,7 @@ Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓
 | 阶段 | 核心模块 |
 |------|---------|
 | **v0.1** | types, config, hal(基础FSEvents/Keychain), llm, runtime, memory(Long-Term), kb, vault, security(7层基线), controlplane-client, ffi, api, service, cli |
-| **v0.2** | skills, scheduler, channel, security(完整12层), eventbus, MCP, memory(+Short-Term), 自主性能力(ReAct/反思/信任) |
+| **v0.2** | skills, scheduler, channel, security(完整12层), eventbus, MCP, memory(+Short-Term), 自主性能力(Task/Trigger/Run, ReAct, Permission, Attention) |
 | **v0.3** | artifact, 账号体系, 迁移, 用量统计, hal(+Notification/pf完整) |
 | **v0.4** | ota |
 | **v0.5** | Cloud Relay, 云端备份/同步 |

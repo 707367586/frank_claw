@@ -1,6 +1,6 @@
 # ClawX Crate 依赖关系图
 
-**版本:** 4.1
+**版本:** 4.2
 **日期:** 2026年3月18日
 
 ---
@@ -43,6 +43,8 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 依赖: (无内部依赖)
 外部: serde, serde_json, chrono, uuid, thiserror, async-trait
 被依赖: 所有其他 crate
+说明: 定义跨 crate 共享类型与 Port Trait，包括 Task/Trigger/Run、PermissionProfile、
+      TaskRegistryPort、NotificationPort
 ```
 
 ### clawx-config (Layer 1)
@@ -66,7 +68,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 ```
 依赖: clawx-types
 外部: tokio, async-trait, tracing
-被依赖: clawx-security, clawx-kb, clawx-ota
+被依赖: clawx-security, clawx-kb, clawx-ota, clawx-service
 说明: 封装 FSEvents/Keychain/Notification 等 macOS 宿主能力 (ADR-019)
 ```
 
@@ -96,16 +98,16 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 ```
 依赖: clawx-types, clawx-eventbus
 外部: tokio, async-trait, tracing
-被依赖: (通过 eventbus 间接驱动 runtime)
-说明: v0.2 扩展执行层 (ADR-021)
+被依赖: clawx-service (组合时装配), (通过 eventbus 间接驱动 runtime)
+说明: v0.2 扩展执行层；负责 time/event 触发源，并提供 TaskRegistryPort 的具体实现
 ```
 
 ### clawx-channel (Layer 2)
 ```
 依赖: clawx-types, clawx-eventbus
 外部: tokio, async-trait, tracing
-被依赖: clawx-runtime (v0.2)
-说明: v0.2 扩展执行层；IM 消息路由作为内部功能，不再拆分 gateway crate (ADR-021)
+被依赖: clawx-service (组合时装配)
+说明: v0.2 扩展执行层；负责 IM 路由与外发通知递送，不被 runtime 直接依赖 (ADR-021)
 ```
 
 ### clawx-artifact (Layer 2)
@@ -153,7 +155,9 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 依赖: clawx-types, clawx-llm, clawx-memory, clawx-kb, clawx-security, clawx-eventbus(v0.2 启用), clawx-vault
 外部: tokio, async-trait, serde, serde_json, tracing, uuid
 被依赖: clawx-api, clawx-service
-说明: 包含 Working Memory 管理（上下文窗口、压缩、Prompt 组装）(ADR-010)；编排记忆召回与知识检索并行执行
+说明: 包含 Working Memory 管理（上下文窗口、压缩、Prompt 组装）(ADR-010)；
+      自主性模块通过 clawx-types 中的 Port Trait 与 scheduler/channel/desktop notifier 交互，
+      不直接依赖这些 concrete crate
 ```
 
 ### clawx-api (Layer 5)
@@ -181,9 +185,11 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 
 ### clawx-service (App)
 ```
-依赖: clawx-types, clawx-runtime, clawx-api, clawx-config, clawx-eventbus(v0.2 启用)
+依赖: clawx-types, clawx-runtime, clawx-api, clawx-config, clawx-eventbus(v0.2 启用),
+      clawx-scheduler(v0.2), clawx-channel(v0.2), clawx-hal
 外部: tokio, tracing, tracing-subscriber, anyhow
-说明: 后台主进程，由 launchd 守护，内含健康自检 (ADR-005)
+说明: 后台主进程，由 launchd 守护，内含健康自检 (ADR-005)；
+      作为组合根装配 TaskRegistryPort 与 NotificationPort
 ```
 
 ### clawx-cli (App)
@@ -205,6 +211,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 | Domain 不依赖 API | 领域层不感知接口层 |
 | Config/Infra (Layer 1) 不依赖 Domain (Layer 2+) | config/eventbus/hal 不直接依赖 llm/security/vault 等上层 |
 | 模块间通过 EventBus 解耦 | 避免 scheduler → runtime 直接依赖 |
+| runtime 通过 Port Trait 访问扩展执行层 | 不直接依赖 scheduler/channel concrete crate |
 | ffi/cli 不直接依赖 runtime | 统一通过 controlplane-client (ADR-004) |
 
 ### 3.2 共享类型规则
