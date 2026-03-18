@@ -30,12 +30,19 @@ frank_claw/
 │   ├── general.md         # Global rules (security, errors, testing)
 │   ├── rust.md            # Rust-specific rules
 │   └── swift.md           # SwiftUI-specific rules
-├── docs/                  # All product & design documents
-│   ├── v1.1-clawx.md     # Product Requirements Document (PRD)
-│   ├── overview.md        # System architecture design
-│   ├── decisions.md       # Architecture Decision Records (ADRs)
-│   ├── roles.md           # AI agent role definitions
-│   └── backlog.md         # Task backlog & sprint planning
+├── docs/
+│   ├── prd/               # Product Requirements Documents
+│   │   └── clawx-v2.0.md # PRD v2.0 — 产品需求文档
+│   └── arch/              # Architecture Design Documents
+│       ├── README.md              # 架构文档索引
+│       ├── architecture.md        # 系统架构总览
+│       ├── api-design.md          # API 设计
+│       ├── data-model.md          # 数据模型
+│       ├── memory-architecture.md # 记忆架构
+│       ├── security-architecture.md # 安全架构
+│       ├── autonomy-architecture.md # 自主性架构
+│       ├── crate-dependency-graph.md # Crate 依赖图
+│       └── decisions.md           # 架构决策记录 (ADR)
 ├── src/
 │   ├── core/              # Rust core runtime (workspace crates)
 │   ├── gui/               # SwiftUI macOS GUI
@@ -57,13 +64,12 @@ cargo fmt                 # Format
 ## How to Start (Read Order)
 
 ```
-1. agents.md               → Project overview & tech stack (you are here)
-2. workflow.md              → Step-by-step dev workflow (MUST follow)
+1. agents.md                    → Project overview & tech stack (you are here)
+2. workflow.md                  → Step-by-step dev workflow (MUST follow)
 3. docs/prd/clawx-v2.0.md      → PRD, understand what to build
-4. docs/arch/architecture-v2.1.md → Architecture (融合 OpenClaw/IronClaw/ZeroClaw/OpenFang 精华)
-5. rules/                   → Coding constraints for your language
-6. docs/backlog.md          → Find what to work on
-7. docs/roles.md            → Pick your AI role
+4. docs/arch/architecture.md    → 系统架构总览
+5. docs/arch/README.md          → 架构文档索引, 按需深入阅读
+6. rules/                       → Coding constraints for your language
 ```
 
 ## Core Rules (Quick Reference)

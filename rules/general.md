@@ -29,6 +29,12 @@
 - Use `#[cfg(test)]` modules alongside source code
 - Prefer table-driven tests for combinatorial cases
 
+## Crate 分层依赖
+- 上层可依赖下层，**禁止反向依赖或同层互依赖**
+- Layer 0: `clawx-types` → Layer 1: config/eventbus/hal → Layer 2: domain → Layer 3: services → Layer 4: runtime → Layer 5: api/ffi/cli
+- `clawx-ffi` / `clawx-cli` 通过 `clawx-controlplane-client` 访问 API，不直接依赖 runtime
+- 新增 crate 必须明确归属层级，在 PR 中说明
+
 ## Git
 - Branch: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`
 - Commits: imperative mood, English, concise
