@@ -5,14 +5,21 @@ edition.workspace = true
 
 [dependencies]
 clawx-types = { workspace = true }
+clawx-config = { workspace = true }
 clawx-llm = { workspace = true }
 clawx-memory = { workspace = true }
+clawx-kb = { workspace = true }
 clawx-security = { workspace = true }
 clawx-eventbus = { workspace = true }
 clawx-vault = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+sqlx = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

@@ -7,8 +7,15 @@ edition.workspace = true
 clawx-types = { workspace = true }
 clawx-config = { workspace = true }
 clawx-eventbus = { workspace = true }
+clawx-hal = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 regex = { workspace = true }
+serde_json = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
+zeroize = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

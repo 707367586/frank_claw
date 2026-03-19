@@ -1,29 +1,17 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::ids::AgentId;
+use crate::ids::{AgentId, AuditEntryId};
 
-/// Execution tier controlling the sandbox level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Capability types for the L4 permission model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ExecutionTier {
-    Sandboxed,
-    Subprocess,
-    Native,
-}
-
-/// Permissions granted for a particular execution.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecutionPermissions {
-    pub tier: ExecutionTier,
-    pub allow_network: bool,
-    pub allow_filesystem: bool,
-    pub max_memory_bytes: u64,
-    pub max_cpu_time_ms: u64,
-    #[serde(default)]
-    pub allowed_hosts: Vec<String>,
-    #[serde(default)]
-    pub allowed_paths: Vec<String>,
+pub enum Capability {
+    FsRead,
+    FsWrite,
+    NetHttp,
+    ExecShell,
+    SecretInject,
 }
 
 /// Outcome of a security evaluation.
@@ -50,26 +38,38 @@ pub struct DlpResult {
     pub direction: DataDirection,
     #[serde(default)]
     pub violations: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redacted_content: Option<String>,
 }
 
-/// Result of a prompt-injection scan.
+/// A single entry in the SHA-256 hash-chain audit log (L12).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InjectionScanResult {
-    pub is_injection: bool,
-    pub score: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub explanation: Option<String>,
-}
-
-/// Record of an auditable security event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuditEvent {
+pub struct AuditEntry {
+    pub id: AuditEntryId,
     pub timestamp: DateTime<Utc>,
     pub agent_id: AgentId,
     pub action: String,
     pub decision: SecurityDecision,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
+    /// SHA-256 hash of the previous entry (hash chain).
+    pub prev_hash: String,
+    /// SHA-256 hash of this entry.
+    pub hash: String,
+}
+
+/// A network whitelist entry for L6 SSRF protection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkWhitelistEntry {
+    pub domain: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+}
+
+/// Path permission for L7 path traversal protection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathPermission {
+    pub path: String,
+    pub read: bool,
+    pub write: bool,
 }

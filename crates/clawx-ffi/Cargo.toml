@@ -5,6 +5,6 @@ edition.workspace = true
 
 [dependencies]
 clawx-types = { workspace = true }
-clawx-runtime = { workspace = true }
+clawx-controlplane-client = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

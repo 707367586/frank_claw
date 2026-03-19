@@ -7,6 +7,15 @@ edition.workspace = true
 clawx-types = { workspace = true }
 clawx-llm = { workspace = true }
 clawx-eventbus = { workspace = true }
-tokio = { workspace = true }
+clawx-hal = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
 async-trait = { workspace = true }
+sqlx = { workspace = true }
+qdrant-client = { workspace = true }
+tantivy = { workspace = true }
 tracing = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+tempfile = "3"

@@ -3,8 +3,9 @@
 //! Provides safe rollback capabilities by leveraging macOS APFS snapshots
 //! before destructive agent operations, with per-file restore support.
 
-/// Snapshot management.
 pub mod snapshot;
-
-/// File-level restore operations.
 pub mod restore;
+
+mod stub;
+pub use stub::StubVaultService;
+pub use snapshot::{SqliteVaultService, cleanup_old_snapshots};

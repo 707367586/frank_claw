@@ -3,43 +3,43 @@ use thiserror::Error;
 /// Unified error type for the ClawX system.
 #[derive(Debug, Error)]
 pub enum ClawxError {
+    #[error("not found: {entity} {id}")]
+    NotFound { entity: String, id: String },
+
+    #[error("unauthorized: {reason}")]
+    Unauthorized { reason: String },
+
+    #[error("conflict: {reason}")]
+    Conflict { reason: String },
+
+    #[error("validation error: {0}")]
+    Validation(String),
+
     #[error("LLM provider error: {0}")]
     LlmProvider(String),
 
     #[error("LLM rate limited: retry after {retry_after_secs}s")]
     LlmRateLimited { retry_after_secs: u64 },
 
-    #[error("Security denied: {reason}")]
+    #[error("security denied: {reason}")]
     SecurityDenied { reason: String },
 
     #[error("DLP violation: {rule} matched on {direction}")]
     DlpViolation { rule: String, direction: String },
 
-    #[error("Prompt injection detected: score={score:.2}")]
-    PromptInjection { score: f64 },
-
-    #[error("Database error: {0}")]
+    #[error("database error: {0}")]
     Database(String),
 
-    #[error("Vector store error: {0}")]
+    #[error("vector store error: {0}")]
     VectorStore(String),
 
-    #[error("WASM execution error: {0}")]
-    WasmExecution(String),
-
-    #[error("WASM timeout after {elapsed_ms}ms (limit {limit_ms}ms)")]
-    WasmTimeout { elapsed_ms: u64, limit_ms: u64 },
-
-    #[error("Snapshot error: {0}")]
+    #[error("snapshot error: {0}")]
     Snapshot(String),
 
-    #[error("Channel connection error: {0}")]
-    ChannelConnection(String),
-
-    #[error("Configuration error: {0}")]
+    #[error("configuration error: {0}")]
     Config(String),
 
-    #[error("Internal error: {0}")]
+    #[error("internal error: {0}")]
     Internal(String),
 }
 

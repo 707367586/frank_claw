@@ -4,11 +4,19 @@
 //! and long-term memory (persistent vector/SQLite store) to give agents
 //! durable recall across conversations.
 
-/// Working memory: current context window.
 pub mod working;
-
-/// Short-term memory: session-scoped storage.
 pub mod short_term;
-
-/// Long-term memory: persistent storage with embeddings.
 pub mod long_term;
+pub mod decay;
+pub mod extraction;
+pub mod consolidation;
+
+#[cfg(test)]
+mod long_term_tests;
+
+mod stub;
+pub use stub::{StubMemoryService, StubWorkingMemoryManager};
+pub use long_term::SqliteMemoryService;
+pub use decay::run_memory_decay;
+pub use extraction::{LlmMemoryExtractor, StubMemoryExtractor};
+pub use working::{RealWorkingMemoryManager, WorkingMemoryConfig};

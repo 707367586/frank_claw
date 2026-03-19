@@ -1,17 +1,8 @@
 //! Configuration loading and validation for ClawX.
 //!
-//! Provides TOML-based configuration parsing, environment overlay,
-//! and runtime validation of agent and system settings.
+//! Provides TOML-based configuration parsing, directory initialization,
+//! and the `ConfigService` trait implementation.
 
-/// Core configuration types and loader.
-pub mod loader;
+mod loader;
 
-mod loader_impl {
-    /// Placeholder configuration struct.
-    #[derive(Debug, Clone)]
-    pub struct ClawxConfig {
-        _private: (),
-    }
-}
-
-pub use loader_impl::ClawxConfig;
+pub use loader::{ConfigLoader, expand_tilde};
