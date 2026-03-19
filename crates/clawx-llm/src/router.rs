@@ -49,6 +49,8 @@ impl LlmRouter {
             "anthropic"
         } else if model.starts_with("gpt-") {
             "openai"
+        } else if model.starts_with("glm-") {
+            "zhipu"
         } else {
             &self.fallback_key
         }
@@ -102,6 +104,7 @@ mod tests {
         providers.insert("stub".to_string(), Arc::new(StubLlmProvider));
         providers.insert("anthropic".to_string(), Arc::new(StubLlmProvider));
         providers.insert("openai".to_string(), Arc::new(StubLlmProvider));
+        providers.insert("zhipu".to_string(), Arc::new(StubLlmProvider));
         LlmRouter::new(providers, "stub".to_string())
     }
 
@@ -134,6 +137,15 @@ mod tests {
         assert_eq!(router.resolve_key("gpt-4o"), "openai");
         assert_eq!(router.resolve_key("gpt-4-turbo"), "openai");
         assert_eq!(router.resolve_key("gpt-3.5-turbo"), "openai");
+    }
+
+    #[test]
+    fn routes_glm_models_to_zhipu() {
+        let router = make_router();
+        assert_eq!(router.resolve_key("glm-4"), "zhipu");
+        assert_eq!(router.resolve_key("glm-4-flash"), "zhipu");
+        assert_eq!(router.resolve_key("glm-4-plus"), "zhipu");
+        assert_eq!(router.resolve_key("glm-4v"), "zhipu");
     }
 
     #[test]

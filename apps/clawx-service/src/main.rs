@@ -143,6 +143,17 @@ fn build_llm_router() -> Arc<dyn clawx_types::traits::LlmProvider> {
         tracing::info!("registered OpenAI LLM provider");
     }
 
+    // ZhipuAI provider (if API key is set)
+    if let Ok(api_key) = std::env::var("ZHIPU_API_KEY") {
+        let base_url = std::env::var("ZHIPU_BASE_URL")
+            .unwrap_or_else(|_| "https://open.bigmodel.cn/api/paas/v4".to_string());
+        providers.insert(
+            "zhipu".to_string(),
+            Arc::new(clawx_llm::ZhipuProvider::new(api_key, base_url)),
+        );
+        tracing::info!("registered ZhipuAI LLM provider");
+    }
+
     Arc::new(clawx_llm::LlmRouter::new(providers, "stub".to_string()))
 }
 

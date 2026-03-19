@@ -7,9 +7,11 @@
 mod stub;
 mod anthropic;
 mod openai;
+mod zhipu;
 mod router;
 
 pub use stub::StubLlmProvider;
 pub use anthropic::AnthropicProvider;
 pub use openai::OpenAiProvider;
+pub use zhipu::ZhipuProvider;
 pub use router::LlmRouter;

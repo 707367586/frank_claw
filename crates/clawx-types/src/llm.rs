@@ -105,6 +105,7 @@ pub struct ProviderMetadata {
 pub enum ProviderType {
     Openai,
     Anthropic,
+    Zhipu,
     Ollama,
     Custom,
 }
@@ -114,6 +115,7 @@ impl std::fmt::Display for ProviderType {
         match self {
             Self::Openai => write!(f, "openai"),
             Self::Anthropic => write!(f, "anthropic"),
+            Self::Zhipu => write!(f, "zhipu"),
             Self::Ollama => write!(f, "ollama"),
             Self::Custom => write!(f, "custom"),
         }
@@ -127,6 +129,7 @@ impl std::str::FromStr for ProviderType {
         match s {
             "openai" => Ok(Self::Openai),
             "anthropic" => Ok(Self::Anthropic),
+            "zhipu" => Ok(Self::Zhipu),
             "ollama" => Ok(Self::Ollama),
             "custom" => Ok(Self::Custom),
             other => Err(format!("unknown provider type: {}", other)),
