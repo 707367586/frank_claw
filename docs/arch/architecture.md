@@ -19,15 +19,15 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        Presentation Layer                           │
-│  SwiftUI GUI │ CLI (clawx) │ IM Channels (Lark/TG/Slack…) │ iOS   │
-└───────┬────────────┬────────────────┬───────────────────┬──────────┘
-        │ FFI        │ CLI            │                   │ Cloud Relay
-        ▼            ▼                ▼                   ▼
+│  Tauri GUI (React+TS) │ CLI (clawx) │ IM Channels │ iOS            │
+└───────┬────────────────────┬─────────────┬──────────────┬──────────┘
+        │ Tauri Commands     │ CLI         │              │ Cloud Relay
+        ▼                    ▼             ▼              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │             Layer 5: API / Application Layer                        │
-│  clawx-ffi ─┐                                                       │
-│              ├─▶ clawx-controlplane-client ──▶ clawx-api (REST/Axum)│
-│  clawx-cli ─┘                           clawx-service (守护进程)   │
+│  clawx-desktop ┐                                                    │
+│                 ├─▶ clawx-controlplane-client ──▶ clawx-api (Axum)  │
+│  clawx-cli ────┘                           clawx-service (守护进程) │
 └─────────┬──────────────────┬──────────────────────┬────────────────┘
           ▼                  ▼                      ▼
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -72,13 +72,13 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 | 层次 | 技术 | 理由 |
 |------|------|------|
 | 核心运行时 | Rust + tokio | 高性能、内存安全 |
-| GUI | SwiftUI | 原生体验、系统深度集成 |
+| GUI | Tauri v2 + React + TypeScript | 跨平台潜力、Web 生态复用、开发效率高 |
 | 数据库 | SQLite (sqlx) | 嵌入式零运维 |
 | 向量数据库 | Qdrant (embedded) | 嵌入式高性能向量检索 |
 | 全文检索 | Tantivy (BM25) | Rust 原生 |
 | WASM 沙箱 | Wasmtime + 双计量 | 安全隔离、防 DoS |
 | HTTP | Axum + Reqwest | Tokio 原生生态 |
-| FFI | swift-bridge / uniffi | SwiftUI ↔ Rust 桥接 |
+| GUI 桥接 | Tauri Commands | Webview ↔ Rust 通信，替代传统 FFI |
 | 移动端 | Cloud Relay (WSS + E2E X25519) | 云端转发，不可解密 |
 
 ---
@@ -133,7 +133,7 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 |-------|------|
 | **clawx-api** | REST API (Axum)：/agents, /conversations, /memories, /knowledge, /tasks, /system |
 | **clawx-controlplane-client** | 本地控制平面客户端共享库，GUI/CLI 统一通过此访问 clawx-service |
-| **clawx-ffi** | SwiftUI ↔ Rust FFI 薄层桥接，内部调用 clawx-controlplane-client |
+| **clawx-desktop** | Tauri v2 桌面应用，Webview 渲染 React+TS 前端，Tauri Commands 调用 controlplane-client |
 | **clawx-service** | 后台守护主进程（macOS Launch Agent，含健康自检，由 launchd 管理生命周期） |
 | **clawx-cli** | 命令行交互工具，内部调用 clawx-controlplane-client |
 
@@ -144,7 +144,7 @@ ClawX 采用**分层单体 + 模块化 Crate** 架构（Rust Workspace）。
 ### 3.1 对话请求流程
 
 ```
-User Input → clawx-ffi/cli → controlplane-client → clawx-api → clawx-runtime
+User Input → clawx-desktop/cli → controlplane-client → clawx-api → clawx-runtime
   → clawx-security (权限检查)
   → 并行: clawx-memory (记忆召回) + clawx-kb (知识检索)
   → Prompt 组装 (System + Memory + Knowledge + User)  [由 Runtime 完成, ADR-010]
@@ -181,9 +181,9 @@ FSEvents → clawx-kb: 文件解析 → 语义分块 (512T, 10%重叠) → Embed
 macOS launchd (KeepAlive + RunAtLoad, 崩溃重启 < 5s)
     │
     ▼
-clawx-service (后台, 无 UI)          ClawX.app (GUI)
-├── Runtime Engine                    ├── SwiftUI Views
-├── Composition Root (ports wiring)   └── FFI → controlplane-client → API
+clawx-service (后台, 无 UI)          ClawX.app (GUI, Tauri)
+├── Runtime Engine                    ├── Webview (React + TypeScript)
+├── Composition Root (ports wiring)   └── Tauri Commands → controlplane-client → API
 ├── Scheduler Engine
 ├── API Server (UDS ~/.clawx/run/clawx.sock)
 ├── KB Engine (后台索引)
@@ -237,7 +237,7 @@ Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓
 
 | 阶段 | 核心模块 |
 |------|---------|
-| **v0.1** | types, config, hal(基础FSEvents/Keychain), llm, runtime, memory(Long-Term), kb, vault, security(7层基线), controlplane-client, ffi, api, service, cli |
+| **v0.1** | types, config, hal(基础FSEvents/Keychain), llm, runtime, memory(Long-Term), kb, vault, security(7层基线), controlplane-client, desktop(Tauri), api, service, cli |
 | **v0.2** | skills, scheduler, channel, security(完整12层), eventbus, MCP, memory(+Short-Term), 自主性能力(Task/Trigger/Run, ReAct, Permission, Attention) |
 | **v0.3** | artifact, 账号体系, 迁移, 用量统计, hal(+Notification/pf完整) |
 | **v0.4** | ota |
@@ -259,6 +259,7 @@ Relay 职责：设备发现、消息路由、APNs 推送代理、离线消息缓
 | 向量检索 | Qdrant embedded + Tantivy BM25 + RRF | 混合检索效果显著优于单一 |
 | 沙箱 | Wasmtime WASM + 双计量 | 燃料+纪元防 DoS |
 | 凭证安全 | 宿主边界注入 + Zeroizing + Keychain | 密钥永不进沙箱 |
+| GUI | Tauri v2 + React + TS | 跨平台潜力、Web 生态复用 (ADR-035) |
 | GUI/CLI-Core | controlplane-client → API (UDS) | 单入口硬边界 (ADR-003/004) |
 | 进程守护 | macOS launchd（无独立 daemon 进程） | 系统级最可靠 (ADR-005) |
 | 移动端 | Cloud Relay (WSS + E2E) | 零配置，Relay 不解密 |

@@ -17,7 +17,7 @@ ClawX 的接口设计围绕**本地控制平面**展开：
 
 - `clawx-api` 是 service 内 server
 - `clawx-controlplane-client` 是本地客户端共享访问库
-- `clawx-ffi` 只桥接到 `clawx-controlplane-client`，不直接持有 runtime
+- `clawx-desktop`（Tauri app）通过 Tauri Commands 调用 `clawx-controlplane-client`，不直接持有 runtime
 
 ### 1.1 本地认证
 
@@ -118,8 +118,8 @@ SSE 事件格式：
 ### 4.1 调用链
 
 ```text
-SwiftUI View / CLI Command
-  -> clawx-ffi or CLI front-end
+Tauri Webview (React+TS) / CLI Command
+  -> Tauri Commands or CLI front-end
   -> clawx-controlplane-client
   -> clawx-api
   -> clawx-runtime
@@ -127,20 +127,41 @@ SwiftUI View / CLI Command
 
 ### 4.2 设计约束
 
-1. `clawx-ffi` 与 `clawx-cli` 不持有长期 runtime state
+1. `clawx-desktop` 与 `clawx-cli` 不持有长期 runtime state
 2. 所有状态变更请求都必须经由 `clawx-api`
 3. `/tasks` 是主动任务的唯一控制面端点，不再额外暴露 `/schedules`
 4. 预览、诊断或测试优先走 mock server / test server，而不是直连 runtime
 
-### 4.3 FFI 示例
+### 4.3 Tauri Commands 示例
 
 ```rust
-fn create_agent(config_json: &str) -> String;
-fn list_agents() -> String;
-fn send_message(conversation_id: &str, content: &str, callback: fn(&str)) -> String;
-fn query_memories(filter_json: &str) -> String;
-fn search_knowledge(query_json: &str) -> String;
-fn get_system_health() -> String;
+#[tauri::command]
+async fn create_agent(state: State<'_, AppState>, config: CreateAgentRequest) -> Result<Agent, String>;
+
+#[tauri::command]
+async fn list_agents(state: State<'_, AppState>) -> Result<Vec<Agent>, String>;
+
+#[tauri::command]
+async fn send_message(state: State<'_, AppState>, conversation_id: String, content: String) -> Result<(), String>;
+
+#[tauri::command]
+async fn query_memories(state: State<'_, AppState>, filter: MemoryFilter) -> Result<Vec<Memory>, String>;
+
+#[tauri::command]
+async fn search_knowledge(state: State<'_, AppState>, query: KnowledgeQuery) -> Result<Vec<SearchResult>, String>;
+
+#[tauri::command]
+async fn get_system_health(state: State<'_, AppState>) -> Result<SystemHealth, String>;
+```
+
+流式对话通过 Tauri Events 推送：
+```rust
+// Rust 端
+app.emit("conversation-stream", StreamChunk { ... })?;
+
+// 前端
+import { listen } from "@tauri-apps/api/event";
+await listen("conversation-stream", (event) => { /* 渲染流式内容 */ });
 ```
 
 ---

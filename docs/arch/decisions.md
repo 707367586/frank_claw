@@ -30,9 +30,11 @@
 
 ## ADR-004: 共享 `clawx-controlplane-client`
 
-**决策:** `clawx-ffi` 与 `clawx-cli` 共用 `clawx-controlplane-client`，不直接依赖 runtime。
+**决策:** `clawx-desktop`（Tauri app）与 `clawx-cli` 共用 `clawx-controlplane-client`，不直接依赖 runtime。
 
 **理由:** 把"单入口"做成硬边界，而不是约定。
+
+**历史:** 原为 `clawx-ffi`（SwiftUI UniFFI 桥接），ADR-035 决策后替换为 `clawx-desktop`（Tauri Commands）。
 
 ---
 
@@ -286,4 +288,29 @@
 
 **决策:** 主动任务执行完成后，不默认“有结果就通知”，而必须先经过独立的 Attention Policy 判断是否立即推送、汇总后推送、仅记录历史或直接抑制。
 
-**理由:** PRD 对主动式 Agent 的核心要求不是“更多通知”，而是“少打扰、真推进、可衡量”。Attention Policy 是把这一要求工程化的必要组件，也是把负反馈率控制在目标阈值内的关键手段。
+**理由:** PRD 对主动式 Agent 的核心要求不是”更多通知”，而是”少打扰、真推进、可衡量”。Attention Policy 是把这一要求工程化的必要组件，也是把负反馈率控制在目标阈值内的关键手段。
+
+---
+
+## ADR-035: Tauri 替代 SwiftUI 作为桌面 GUI 方案
+
+**决策:** 使用 Tauri v2 + React + TypeScript 替代原定的 SwiftUI + UniFFI 方案构建桌面 GUI。删除 `clawx-ffi` crate，新建 `apps/clawx-desktop`（Tauri app）。
+
+**替代方案:**
+- SwiftUI + UniFFI（原方案）：macOS 原生体验最佳，但开发门槛高、生态封闭、跨平台能力为零
+- Electron：跨平台成熟，但打包 Chromium 导致体积 > 150MB，内存占用高
+- Flutter：跨平台但 Rust FFI 集成不成熟，桌面端生态较弱
+
+**理由:**
+1. Tauri v2 使用系统 WKWebView，不打包浏览器引擎，最终 .app 体积约 20-40MB
+2. React + TypeScript 生态成熟，UI 组件库丰富，开发效率显著高于 SwiftUI
+3. Tauri Commands 是原生 Rust 函数，与现有 Workspace 天然集成，无需额外 FFI 抽象层
+4. 架构核心不变：Tauri app 仍通过 `clawx-controlplane-client` 访问 `clawx-service`，符合 ADR-003/004
+5. 保留跨平台潜力（Linux/Windows），但当前阶段仅面向 macOS
+
+**权衡:**
+- 内存占用略高于 SwiftUI（WKWebView 基线约 80-120MB），PRD 空闲内存预算从 300MB 调整为 400MB
+- 部分 macOS 原生体验（如系统级弹窗）需通过 Tauri 插件实现，体验接近但非完全等同
+- 放弃 SwiftUI 后，未来 iOS 移动端随行（v1.0+）需独立开发原生 Swift app 或采用 React Native
+
+**废弃:** `clawx-ffi` crate 彻底删除，不再维护。

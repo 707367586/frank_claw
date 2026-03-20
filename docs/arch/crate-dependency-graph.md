@@ -26,13 +26,14 @@ Layer 4 (Runtime)         └──────────┴──────
                                    │
 Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
                               │              │          │
-                        clawx-service   clawx-ffi   clawx-cli
+                        clawx-service  clawx-desktop  clawx-cli
 ```
 
 **说明:**
 - `clawx-daemon` 已移除，健康自检内置于 `clawx-service`（ADR-005）
 - `clawx-gateway` 已移除，IM 路由内置于 `clawx-channel`（ADR-021）
-- `clawx-ffi` / `clawx-cli` 通过 `clawx-controlplane-client` 访问 API，不直接依赖 runtime（ADR-004）
+- `clawx-desktop` / `clawx-cli` 通过 `clawx-controlplane-client` 访问 API，不直接依赖 runtime（ADR-004）
+- `clawx-ffi` 已删除，由 `clawx-desktop`（Tauri v2）替代（ADR-035）
 
 ---
 
@@ -171,16 +172,17 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 ```
 依赖: clawx-types
 外部: tokio, reqwest (UDS), serde, serde_json, tracing
-被依赖: clawx-ffi, clawx-cli
+被依赖: clawx-desktop, clawx-cli
 说明: 本地控制平面客户端共享库，通过 UDS/HTTP 连接 clawx-api (ADR-004)
 ```
 
-### clawx-ffi (Layer 5)
+### clawx-desktop (App, Tauri v2)
 ```
 依赖: clawx-types, clawx-controlplane-client
-外部: tokio, tracing
-被依赖: SwiftUI GUI (编译时链接)
-说明: 不直接依赖 runtime，通过 controlplane-client 间接访问 (ADR-004)
+外部: tauri, tokio, serde, serde_json, tracing
+被依赖: (独立桌面应用)
+说明: Tauri v2 桌面应用，Webview 渲染 React+TS 前端，Tauri Commands 调用 controlplane-client (ADR-004, ADR-035)
+      前端: React + TypeScript + Vite，位于 apps/clawx-desktop/ui/
 ```
 
 ### clawx-service (App)
@@ -212,7 +214,7 @@ Layer 5 (API/Apps)          clawx-api   clawx-controlplane-client
 | Config/Infra (Layer 1) 不依赖 Domain (Layer 2+) | config/eventbus/hal 不直接依赖 llm/security/vault 等上层 |
 | 模块间通过 EventBus 解耦 | 避免 scheduler → runtime 直接依赖 |
 | runtime 通过 Port Trait 访问扩展执行层 | 不直接依赖 scheduler/channel concrete crate |
-| ffi/cli 不直接依赖 runtime | 统一通过 controlplane-client (ADR-004) |
+| desktop/cli 不直接依赖 runtime | 统一通过 controlplane-client (ADR-004, ADR-035) |
 
 ### 3.2 共享类型规则
 
