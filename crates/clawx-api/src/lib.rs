@@ -30,6 +30,12 @@ pub fn build_router(state: AppState) -> Router {
         .nest("/vault", routes::vault::router())
         .nest("/models", routes::models::router())
         .nest("/system", routes::system::router())
+        // v0.2 routes
+        .nest("/tasks", routes::tasks::router())
+        .nest("/task-triggers", routes::tasks::trigger_router())
+        .nest("/task-runs", routes::tasks::run_router())
+        .nest("/channels", routes::channels::router())
+        .nest("/skills", routes::skills::router())
         .layer(axum::middleware::from_fn_with_state(
             shared.clone(),
             middleware::auth::require_token,
@@ -528,5 +534,623 @@ mod tests {
         assert_eq!(status, 400);
         let err: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(err["error"]["code"], "INVALID_MODEL_ID");
+    }
+
+    // -----------------------------------------------------------------------
+    // Skills API tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn skills_list_returns_empty() {
+        let router = build_router(make_state().await);
+        let (status, body) = request(&router, "GET", "/skills", "test-token-123").await;
+        assert_eq!(status, 200);
+        let skills: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+        assert!(skills.is_empty());
+    }
+
+    #[tokio::test]
+    async fn skills_install_and_list() {
+        let router = build_router(make_state().await);
+        let token = "test-token-123";
+        let wasm_hex = hex::encode(b"fake-wasm-bytes");
+
+        // Install
+        let (status, body) = json_request(
+            &router, "POST", "/skills", token,
+            serde_json::json!({
+                "manifest": {
+                    "name": "greeting",
+                    "version": "1.0.0",
+                    "entrypoint": "main.wasm",
+                    "capabilities": {}
+                },
+                "wasm_bytes_hex": wasm_hex
+            }),
+        ).await;
+        assert_eq!(status, 201, "install should return 201, body: {}", body);
+        let skill: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(skill["name"], "greeting");
+        assert_eq!(skill["version"], "1.0.0");
+        assert_eq!(skill["status"], "enabled");
+
+        // List
+        let (status, body) = request(&router, "GET", "/skills", token).await;
+        assert_eq!(status, 200);
+        let skills: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0]["name"], "greeting");
+    }
+
+    #[tokio::test]
+    async fn skills_get_by_id() {
+        let router = build_router(make_state().await);
+        let token = "test-token-123";
+        let wasm_hex = hex::encode(b"wasm");
+
+        // Install first
+        let (_, body) = json_request(
+            &router, "POST", "/skills", token,
+            serde_json::json!({
+                "manifest": {
+                    "name": "fetcher",
+                    "version": "2.0.0",
+                    "entrypoint": "run.wasm",
+                    "capabilities": { "net_http": ["api.example.com"] }
+                },
+                "wasm_bytes_hex": wasm_hex
+            }),
+        ).await;
+        let skill: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let skill_id = skill["id"].as_str().unwrap();
+
+        // Get by ID
+        let (status, body) = request(&router, "GET", &format!("/skills/{}", skill_id), token).await;
+        assert_eq!(status, 200);
+        let fetched: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(fetched["name"], "fetcher");
+        assert_eq!(fetched["version"], "2.0.0");
+    }
+
+    #[tokio::test]
+    async fn skills_get_not_found() {
+        let router = build_router(make_state().await);
+        let fake_id = uuid::Uuid::new_v4();
+        let (status, body) = request(
+            &router, "GET", &format!("/skills/{}", fake_id), "test-token-123",
+        ).await;
+        assert_eq!(status, 404);
+        let err: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(err["error"]["code"], "SKILL_NOT_FOUND");
+    }
+
+    #[tokio::test]
+    async fn skills_uninstall() {
+        let router = build_router(make_state().await);
+        let token = "test-token-123";
+        let wasm_hex = hex::encode(b"wasm");
+
+        // Install
+        let (_, body) = json_request(
+            &router, "POST", "/skills", token,
+            serde_json::json!({
+                "manifest": {
+                    "name": "to-remove",
+                    "version": "1.0.0",
+                    "entrypoint": "main.wasm",
+                    "capabilities": {}
+                },
+                "wasm_bytes_hex": wasm_hex
+            }),
+        ).await;
+        let skill: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let skill_id = skill["id"].as_str().unwrap();
+
+        // Delete
+        let (status, _) = request(&router, "DELETE", &format!("/skills/{}", skill_id), token).await;
+        assert_eq!(status, 204);
+
+        // Get deleted -> 404
+        let (status, _) = request(&router, "GET", &format!("/skills/{}", skill_id), token).await;
+        assert_eq!(status, 404);
+    }
+
+    #[tokio::test]
+    async fn skills_enable_disable() {
+        let router = build_router(make_state().await);
+        let token = "test-token-123";
+        let wasm_hex = hex::encode(b"wasm");
+
+        // Install
+        let (_, body) = json_request(
+            &router, "POST", "/skills", token,
+            serde_json::json!({
+                "manifest": {
+                    "name": "toggle-skill",
+                    "version": "1.0.0",
+                    "entrypoint": "main.wasm",
+                    "capabilities": {}
+                },
+                "wasm_bytes_hex": wasm_hex
+            }),
+        ).await;
+        let skill: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let skill_id = skill["id"].as_str().unwrap();
+        assert_eq!(skill["status"], "enabled");
+
+        // Disable
+        let (status, body) = json_request(
+            &router, "POST", &format!("/skills/{}/disable", skill_id), token,
+            serde_json::json!({}),
+        ).await;
+        assert_eq!(status, 200);
+        let disabled: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(disabled["status"], "disabled");
+
+        // Enable
+        let (status, body) = json_request(
+            &router, "POST", &format!("/skills/{}/enable", skill_id), token,
+            serde_json::json!({}),
+        ).await;
+        assert_eq!(status, 200);
+        let enabled: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(enabled["status"], "enabled");
+    }
+
+    #[tokio::test]
+    async fn skills_install_invalid_hex() {
+        let router = build_router(make_state().await);
+        let (status, body) = json_request(
+            &router, "POST", "/skills", "test-token-123",
+            serde_json::json!({
+                "manifest": {
+                    "name": "bad",
+                    "version": "1.0.0",
+                    "entrypoint": "main.wasm",
+                    "capabilities": {}
+                },
+                "wasm_bytes_hex": "not-valid-hex!!!"
+            }),
+        ).await;
+        assert_eq!(status, 400);
+        let err: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(err["error"]["code"], "INVALID_WASM");
+    }
+
+    #[tokio::test]
+    async fn skills_install_with_signature() {
+        let router = build_router(make_state().await);
+        let token = "test-token-123";
+        let wasm_hex = hex::encode(b"signed-wasm");
+
+        let (status, body) = json_request(
+            &router, "POST", "/skills", token,
+            serde_json::json!({
+                "manifest": {
+                    "name": "signed-skill",
+                    "version": "1.0.0",
+                    "entrypoint": "main.wasm",
+                    "capabilities": {}
+                },
+                "wasm_bytes_hex": wasm_hex,
+                "signature": "abcdef1234567890"
+            }),
+        ).await;
+        assert_eq!(status, 201, "install with sig should return 201, body: {}", body);
+        let skill: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(skill["signature"], "abcdef1234567890");
+    }
+
+    // -----------------------------------------------------------------------
+    // Task API integration tests (Phase 11)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn task_crud_full_flow() {
+        let router = build_router(make_state().await);
+        let token = "test-token-123";
+        let agent_id = create_test_agent(&router, token).await;
+
+        // Create task
+        let (status, body) = json_request(
+            &router, "POST", "/tasks", token,
+            serde_json::json!({
+                "agent_id": agent_id,
+                "name": "Daily Report",
+                "goal": "Generate daily summary",
+            }),
+        ).await;
+        assert_eq!(status, 201, "create task failed: {}", body);
+        let task: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let task_id = task["id"].as_str().unwrap();
+
+        // Get task
+        let (status, body) = request(&router, "GET", &format!("/tasks/{}", task_id), token).await;
+        assert_eq!(status, 200);
+        let fetched: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(fetched["name"], "Daily Report");
+        assert_eq!(fetched["goal"], "Generate daily summary");
+        assert_eq!(fetched["lifecycle_status"], "active");
+
+        // Update task
+        let (status, body) = json_request(
+            &router, "PUT", &format!("/tasks/{}", task_id), token,
+            serde_json::json!({"name": "Weekly Report"}),
+        ).await;
+        assert_eq!(status, 200);
+        let updated: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(updated["name"], "Weekly Report");
+        assert_eq!(updated["goal"], "Generate daily summary"); // unchanged
+
+        // List tasks
+        let (status, body) = request(&router, "GET", "/tasks", token).await;
+        assert_eq!(status, 200);
+        let tasks: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+        assert!(!tasks.is_empty());
+
+        // Pause
+        let (status, body) = json_request(
+            &router, "POST", &format!("/tasks/{}/pause", task_id), token,
+            serde_json::json!({}),
+        ).await;
+        assert_eq!(status, 200);
+        let paused: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(paused["lifecycle_status"], "paused");
+
+        // Resume
+        let (status, body) = json_request(
+            &router, "POST", &format!("/tasks/{}/resume", task_id), token,
+            serde_json::json!({}),
+        ).await;
+        assert_eq!(status, 200);
+        let resumed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(resumed["lifecycle_status"], "active");
+
+        // Archive
+        let (status, body) = json_request(
+            &router, "POST", &format!("/tasks/{}/archive", task_id), token,
+            serde_json::json!({}),
+        ).await;
+        assert_eq!(status, 200);
+        let archived: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(archived["lifecycle_status"], "archived");
+
+        // Delete
+        let (status, _) = request(&router, "DELETE", &format!("/tasks/{}", task_id), token).await;
+        assert_eq!(status, 204);
+
+        // Get deleted -> 404
+        let (status, _) = request(&router, "GET", &format!("/tasks/{}", task_id), token).await;
+        assert_eq!(status, 404);
+    }
+
+    #[tokio::test]
+    async fn task_get_not_found() {
+        let router = build_router(make_state().await);
+        let fake_id = uuid::Uuid::new_v4();
+        let (status, body) = request(
+            &router, "GET", &format!("/tasks/{}", fake_id), "test-token-123",
+        ).await;
+        assert_eq!(status, 404);
+        let err: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(err["error"]["code"], "TASK_NOT_FOUND");
+    }
+
+    #[tokio::test]
+    async fn task_triggers_crud() {
+        let state = make_state().await;
+        let router = build_router(state.clone());
+        let token = "test-token-123";
+        let agent_id = create_test_agent(&router, token).await;
+
+        // Create task first
+        let (status, body) = json_request(
+            &router, "POST", "/tasks", token,
+            serde_json::json!({
+                "agent_id": agent_id,
+                "name": "Trigger Test Task",
+                "goal": "Test triggers",
+            }),
+        ).await;
+        assert_eq!(status, 201);
+        let task: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let task_id = task["id"].as_str().unwrap();
+
+        // Add trigger
+        let (status, body) = json_request(
+            &router, "POST", &format!("/tasks/{}/triggers", task_id), token,
+            serde_json::json!({
+                "trigger_kind": "time",
+                "trigger_config": {"cron": "0 9 * * *"},
+            }),
+        ).await;
+        assert_eq!(status, 201, "add trigger failed: {}", body);
+        let trigger: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let trigger_id = trigger["id"].as_str().unwrap();
+        assert_eq!(trigger["trigger_kind"], "time");
+        assert_eq!(trigger["status"], "active");
+
+        // List triggers
+        let (status, body) = request(
+            &router, "GET", &format!("/tasks/{}/triggers", task_id), token,
+        ).await;
+        assert_eq!(status, 200);
+        let triggers: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+        assert_eq!(triggers.len(), 1);
+
+        // Update trigger (via trigger_router at /task-triggers/:id)
+        let (status, body) = json_request(
+            &router, "PUT", &format!("/task-triggers/{}", trigger_id), token,
+            serde_json::json!({"status": "paused"}),
+        ).await;
+        assert_eq!(status, 200);
+        let updated: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(updated["status"], "paused");
+
+        // Delete trigger
+        let (status, _) = request(
+            &router, "DELETE", &format!("/task-triggers/{}", trigger_id), token,
+        ).await;
+        assert_eq!(status, 204);
+
+        // List triggers after delete -> empty
+        let (status, body) = request(
+            &router, "GET", &format!("/tasks/{}/triggers", task_id), token,
+        ).await;
+        assert_eq!(status, 200);
+        let triggers: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+        assert!(triggers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn task_runs_and_feedback() {
+        let state = make_state().await;
+        let router = build_router(state.clone());
+        let token = "test-token-123";
+        let agent_id = create_test_agent(&router, token).await;
+
+        // Create task
+        let (_, body) = json_request(
+            &router, "POST", "/tasks", token,
+            serde_json::json!({
+                "agent_id": agent_id,
+                "name": "Run Test Task",
+                "goal": "Test runs",
+            }),
+        ).await;
+        let task: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let task_id_str = task["id"].as_str().unwrap();
+        let task_id: clawx_types::ids::TaskId = task_id_str.parse().unwrap();
+
+        // Create a run directly via the DB (no API endpoint for creating runs)
+        let now = chrono::Utc::now();
+        let run = clawx_types::autonomy::Run {
+            id: clawx_types::autonomy::RunId::new(),
+            task_id,
+            trigger_id: None,
+            idempotency_key: "test-key-1".to_string(),
+            run_status: clawx_types::autonomy::RunStatus::Queued,
+            attempt: 1,
+            lease_owner: None,
+            lease_expires_at: None,
+            checkpoint: serde_json::json!({}),
+            tokens_used: 0,
+            steps_count: 0,
+            result_summary: None,
+            failure_reason: None,
+            feedback_kind: None,
+            feedback_reason: None,
+            notification_status: clawx_types::autonomy::NotificationStatus::Pending,
+            triggered_at: now,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+        };
+        let run_id = clawx_runtime::task_repo::create_run(&state.runtime.db.main, &run)
+            .await
+            .unwrap();
+
+        // List runs for task
+        let (status, body) = request(
+            &router, "GET", &format!("/tasks/{}/runs", task_id_str), token,
+        ).await;
+        assert_eq!(status, 200);
+        let runs: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["idempotency_key"], "test-key-1");
+
+        // Get run by ID
+        let (status, body) = request(
+            &router, "GET", &format!("/task-runs/{}", run_id), token,
+        ).await;
+        assert_eq!(status, 200);
+        let fetched: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(fetched["run_status"], "queued");
+
+        // Submit feedback
+        let (status, body) = json_request(
+            &router, "POST", &format!("/task-runs/{}/feedback", run_id), token,
+            serde_json::json!({"kind": "accepted", "reason": "Looks good"}),
+        ).await;
+        assert_eq!(status, 200);
+        let fb_run: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(fb_run["feedback_kind"], "accepted");
+        assert_eq!(fb_run["feedback_reason"], "Looks good");
+    }
+
+    // -----------------------------------------------------------------------
+    // Channel API integration tests (Phase 11)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn channel_crud_full_flow() {
+        let router = build_router(make_state().await);
+        let token = "test-token-123";
+        let agent_id = create_test_agent(&router, token).await;
+
+        // Create channel
+        let (status, body) = json_request(
+            &router, "POST", "/channels", token,
+            serde_json::json!({
+                "channel_type": "telegram",
+                "name": "My Telegram Bot",
+                "config": {"bot_token": "123:ABC"},
+            }),
+        ).await;
+        assert_eq!(status, 201, "create channel failed: {}", body);
+        let channel: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let channel_id = channel["id"].as_str().unwrap();
+        assert_eq!(channel["name"], "My Telegram Bot");
+        assert_eq!(channel["channel_type"], "telegram");
+        assert_eq!(channel["status"], "disconnected");
+
+        // Get channel
+        let (status, body) = request(&router, "GET", &format!("/channels/{}", channel_id), token).await;
+        assert_eq!(status, 200);
+        let fetched: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(fetched["name"], "My Telegram Bot");
+
+        // List channels
+        let (status, body) = request(&router, "GET", "/channels", token).await;
+        assert_eq!(status, 200);
+        let channels: Vec<serde_json::Value> = serde_json::from_str(&body).unwrap();
+        assert_eq!(channels.len(), 1);
+
+        // Update channel (bind to agent)
+        let (status, body) = json_request(
+            &router, "PUT", &format!("/channels/{}", channel_id), token,
+            serde_json::json!({
+                "name": "Renamed Bot",
+                "agent_id": agent_id,
+            }),
+        ).await;
+        assert_eq!(status, 200);
+        let updated: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(updated["name"], "Renamed Bot");
+        assert_eq!(updated["agent_id"], agent_id);
+
+        // Connect (no body needed)
+        let (status, body) = request(&router, "POST", &format!("/channels/{}/connect", channel_id), token).await;
+        assert_eq!(status, 200);
+        let connected: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(connected["status"], "connected");
+
+        // Disconnect (no body needed)
+        let (status, body) = request(&router, "POST", &format!("/channels/{}/disconnect", channel_id), token).await;
+        assert_eq!(status, 200);
+        let disconnected: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(disconnected["status"], "disconnected");
+
+        // Delete
+        let (status, _) = request(&router, "DELETE", &format!("/channels/{}", channel_id), token).await;
+        assert_eq!(status, 204);
+
+        // Get deleted -> 404
+        let (status, _) = request(&router, "GET", &format!("/channels/{}", channel_id), token).await;
+        assert_eq!(status, 404);
+    }
+
+    #[tokio::test]
+    async fn channel_get_not_found() {
+        let router = build_router(make_state().await);
+        let fake_id = uuid::Uuid::new_v4();
+        let (status, body) = request(
+            &router, "GET", &format!("/channels/{}", fake_id), "test-token-123",
+        ).await;
+        assert_eq!(status, 404);
+        let err: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(err["error"]["code"], "CHANNEL_NOT_FOUND");
+    }
+
+    // -----------------------------------------------------------------------
+    // Skills enable/disable integration test (Phase 11)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn skills_enable_disable_flow() {
+        let state = make_state().await;
+        let router = build_router(state.clone());
+        let token = "test-token-123";
+
+        // Install a skill via DB directly
+        let manifest = clawx_types::skill::SkillManifest {
+            name: "test-skill".to_string(),
+            version: "1.0.0".to_string(),
+            description: Some("A test skill".to_string()),
+            author: Some("tester".to_string()),
+            entrypoint: "main.wasm".to_string(),
+            capabilities: clawx_types::skill::CapabilityDeclaration::default(),
+        };
+        let skill = clawx_runtime::skill_repo::install_skill(
+            &state.runtime.db.main,
+            &manifest,
+            b"fake-wasm",
+            None,
+        ).await.unwrap();
+        let skill_id = skill.id.to_string();
+
+        // Get skill via API
+        let (status, body) = request(&router, "GET", &format!("/skills/{}", skill_id), token).await;
+        assert_eq!(status, 200);
+        let fetched: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(fetched["name"], "test-skill");
+        assert_eq!(fetched["status"], "enabled");
+
+        // Disable
+        let (status, body) = json_request(
+            &router, "POST", &format!("/skills/{}/disable", skill_id), token,
+            serde_json::json!({}),
+        ).await;
+        assert_eq!(status, 200);
+        let disabled: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(disabled["status"], "disabled");
+
+        // Enable
+        let (status, body) = json_request(
+            &router, "POST", &format!("/skills/{}/enable", skill_id), token,
+            serde_json::json!({}),
+        ).await;
+        assert_eq!(status, 200);
+        let enabled: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(enabled["status"], "enabled");
+
+        // Uninstall
+        let (status, _) = request(&router, "DELETE", &format!("/skills/{}", skill_id), token).await;
+        assert_eq!(status, 204);
+
+        // Get uninstalled -> 404
+        let (status, _) = request(&router, "GET", &format!("/skills/{}", skill_id), token).await;
+        assert_eq!(status, 404);
+    }
+
+    // -----------------------------------------------------------------------
+    // Permission profile API test (Phase 11)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn permission_profile_for_agent() {
+        let state = make_state().await;
+        let router = build_router(state.clone());
+        let token = "test-token-123";
+        let agent_id_str = create_test_agent(&router, token).await;
+        let agent_id: clawx_types::ids::AgentId = agent_id_str.parse().unwrap();
+
+        // Create permission profile directly via DB
+        let scores = clawx_types::permission::CapabilityScores::default();
+        clawx_runtime::permission_repo::SqlitePermissionRepo::create_profile(
+            &state.runtime.db.main,
+            &agent_id,
+            &scores,
+        ).await.unwrap();
+
+        // Verify profile exists via DB
+        let profile = clawx_runtime::permission_repo::SqlitePermissionRepo::get_profile(
+            &state.runtime.db.main,
+            &agent_id,
+        ).await.unwrap();
+        assert!(profile.is_some());
+        let profile = profile.unwrap();
+        assert_eq!(profile.agent_id, agent_id);
+        assert_eq!(profile.safety_incidents, 0);
     }
 }

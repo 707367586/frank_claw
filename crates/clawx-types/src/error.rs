@@ -39,6 +39,27 @@ pub enum ClawxError {
     #[error("configuration error: {0}")]
     Config(String),
 
+    #[error("task error: {0}")]
+    Task(String),
+
+    #[error("channel error: {0}")]
+    Channel(String),
+
+    #[error("skill error: {0}")]
+    Skill(String),
+
+    #[error("permission denied: {reason}")]
+    PermissionDenied { reason: String },
+
+    #[error("resource locked: {0}")]
+    ResourceLocked(String),
+
+    #[error("prompt injection detected: {0}")]
+    PromptInjection(String),
+
+    #[error("sandbox error: {0}")]
+    Sandbox(String),
+
     #[error("internal error: {0}")]
     Internal(String),
 }

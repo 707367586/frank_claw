@@ -61,6 +61,21 @@ enum Commands {
         #[command(subcommand)]
         action: ServiceAction,
     },
+    /// Manage tasks
+    Task {
+        #[command(subcommand)]
+        action: TaskAction,
+    },
+    /// Manage channels
+    Channel {
+        #[command(subcommand)]
+        action: ChannelAction,
+    },
+    /// Manage skills
+    Skill {
+        #[command(subcommand)]
+        action: SkillAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -104,6 +119,111 @@ enum SystemAction {
 }
 
 #[derive(Subcommand)]
+enum TaskAction {
+    /// List all tasks
+    List,
+    /// Create a new task
+    Create {
+        name: String,
+        goal: String,
+        agent_id: String,
+    },
+    /// Show task details
+    Show { id: String },
+    /// Update a task
+    Update {
+        id: String,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        goal: Option<String>,
+    },
+    /// Delete a task
+    Delete { id: String },
+    /// Pause a task
+    Pause { id: String },
+    /// Resume a task
+    Resume { id: String },
+    /// Archive a task
+    Archive { id: String },
+    /// Manage task triggers
+    Triggers {
+        #[command(subcommand)]
+        action: TriggerAction,
+    },
+    /// Manage task runs
+    Runs {
+        #[command(subcommand)]
+        action: RunAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum TriggerAction {
+    /// List triggers for a task
+    List { task_id: String },
+    /// Add a trigger to a task
+    Add {
+        task_id: String,
+        kind: String,
+        config_json: String,
+    },
+    /// Delete a trigger
+    Delete { trigger_id: String },
+}
+
+#[derive(Subcommand)]
+enum RunAction {
+    /// List runs for a task
+    List { task_id: String },
+    /// Show run details
+    Show { run_id: String },
+    /// Submit feedback for a run
+    Feedback {
+        run_id: String,
+        kind: String,
+        reason: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChannelAction {
+    /// List all channels
+    List,
+    /// Add a new channel
+    Add {
+        name: String,
+        #[arg(name = "type")]
+        channel_type: String,
+        config_json: String,
+    },
+    /// Show channel details
+    Show { id: String },
+    /// Update a channel
+    Update {
+        id: String,
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Remove a channel
+    Remove { id: String },
+}
+
+#[derive(Subcommand)]
+enum SkillAction {
+    /// List all skills
+    List,
+    /// Show skill details
+    Show { id: String },
+    /// Uninstall a skill
+    Uninstall { id: String },
+    /// Enable a skill
+    Enable { id: String },
+    /// Disable a skill
+    Disable { id: String },
+}
+
+#[derive(Subcommand)]
 enum ServiceAction {
     /// Install the launchd plist to auto-start the service
     Install,
@@ -131,6 +251,9 @@ async fn main() -> Result<()> {
         Commands::Model { action } => handle_model(&client, action).await?,
         Commands::System { action } => handle_system(&client, action).await?,
         Commands::Service { action } => handle_service(action).await?,
+        Commands::Task { action } => handle_task(&client, action).await?,
+        Commands::Channel { action } => handle_channel(&client, action).await?,
+        Commands::Skill { action } => handle_skill(&client, action).await?,
     }
 
     Ok(())
@@ -442,6 +565,271 @@ async fn handle_system(client: &ControlPlaneClient, action: SystemAction) -> Res
         SystemAction::Health => {
             let health: Value = client.get("/system/health").await?;
             println!("{}", serde_json::to_string_pretty(&health)?);
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Task management
+// ---------------------------------------------------------------------------
+
+async fn handle_task(client: &ControlPlaneClient, action: TaskAction) -> Result<()> {
+    match action {
+        TaskAction::List => {
+            let tasks: Vec<Value> = client.get("/tasks").await?;
+            if tasks.is_empty() {
+                println!("No tasks found.");
+            } else {
+                for t in tasks {
+                    println!(
+                        "  {} | {} | {} | {}",
+                        t["id"].as_str().unwrap_or("-"),
+                        t["name"].as_str().unwrap_or("-"),
+                        t["status"].as_str().unwrap_or("-"),
+                        t["agent_id"].as_str().unwrap_or("-"),
+                    );
+                }
+            }
+        }
+        TaskAction::Create {
+            name,
+            goal,
+            agent_id,
+        } => {
+            let body = json!({
+                "name": name,
+                "goal": goal,
+                "agent_id": agent_id,
+            });
+            let task: Value = client.post("/tasks", &body).await?;
+            println!("Created task: {} ({})", task["id"], task["name"]);
+        }
+        TaskAction::Show { id } => {
+            let task: Value = client.get(&format!("/tasks/{}", id)).await?;
+            println!("{}", serde_json::to_string_pretty(&task)?);
+        }
+        TaskAction::Update { id, name, goal } => {
+            let mut body = json!({});
+            if let Some(n) = name {
+                body["name"] = json!(n);
+            }
+            if let Some(g) = goal {
+                body["goal"] = json!(g);
+            }
+            let task: Value = client.put(&format!("/tasks/{}", id), &body).await?;
+            println!("Updated task: {} ({})", task["id"], task["name"]);
+        }
+        TaskAction::Delete { id } => {
+            client.delete(&format!("/tasks/{}", id)).await?;
+            println!("Deleted task {}", id);
+        }
+        TaskAction::Pause { id } => {
+            let task: Value = client
+                .post(&format!("/tasks/{}/pause", id), &json!({}))
+                .await?;
+            println!("Paused task {} ({})", task["id"], task["name"]);
+        }
+        TaskAction::Resume { id } => {
+            let task: Value = client
+                .post(&format!("/tasks/{}/resume", id), &json!({}))
+                .await?;
+            println!("Resumed task {} ({})", task["id"], task["name"]);
+        }
+        TaskAction::Archive { id } => {
+            let task: Value = client
+                .post(&format!("/tasks/{}/archive", id), &json!({}))
+                .await?;
+            println!("Archived task {} ({})", task["id"], task["name"]);
+        }
+        TaskAction::Triggers { action } => handle_trigger(client, action).await?,
+        TaskAction::Runs { action } => handle_run(client, action).await?,
+    }
+    Ok(())
+}
+
+async fn handle_trigger(client: &ControlPlaneClient, action: TriggerAction) -> Result<()> {
+    match action {
+        TriggerAction::List { task_id } => {
+            let triggers: Vec<Value> = client
+                .get(&format!("/tasks/{}/triggers", task_id))
+                .await?;
+            if triggers.is_empty() {
+                println!("No triggers found.");
+            } else {
+                for tr in triggers {
+                    println!(
+                        "  {} | {} | {}",
+                        tr["id"].as_str().unwrap_or("-"),
+                        tr["kind"].as_str().unwrap_or("-"),
+                        tr["enabled"].as_bool().map_or("-".to_string(), |b| b.to_string()),
+                    );
+                }
+            }
+        }
+        TriggerAction::Add {
+            task_id,
+            kind,
+            config_json,
+        } => {
+            let config: Value = serde_json::from_str(&config_json)
+                .map_err(|e| anyhow::anyhow!("invalid JSON for config: {}", e))?;
+            let body = json!({
+                "kind": kind,
+                "config": config,
+            });
+            let trigger: Value = client
+                .post(&format!("/tasks/{}/triggers", task_id), &body)
+                .await?;
+            println!("Created trigger: {}", trigger["id"]);
+        }
+        TriggerAction::Delete { trigger_id } => {
+            client
+                .delete(&format!("/task-triggers/{}", trigger_id))
+                .await?;
+            println!("Deleted trigger {}", trigger_id);
+        }
+    }
+    Ok(())
+}
+
+async fn handle_run(client: &ControlPlaneClient, action: RunAction) -> Result<()> {
+    match action {
+        RunAction::List { task_id } => {
+            let runs: Vec<Value> = client
+                .get(&format!("/tasks/{}/runs", task_id))
+                .await?;
+            if runs.is_empty() {
+                println!("No runs found.");
+            } else {
+                for r in runs {
+                    println!(
+                        "  {} | {} | {}",
+                        r["id"].as_str().unwrap_or("-"),
+                        r["status"].as_str().unwrap_or("-"),
+                        r["started_at"].as_str().unwrap_or("-"),
+                    );
+                }
+            }
+        }
+        RunAction::Show { run_id } => {
+            let run: Value = client.get(&format!("/task-runs/{}", run_id)).await?;
+            println!("{}", serde_json::to_string_pretty(&run)?);
+        }
+        RunAction::Feedback {
+            run_id,
+            kind,
+            reason,
+        } => {
+            let mut body = json!({ "kind": kind });
+            if let Some(r) = reason {
+                body["reason"] = json!(r);
+            }
+            let fb: Value = client
+                .post(&format!("/task-runs/{}/feedback", run_id), &body)
+                .await?;
+            println!("Feedback submitted: {}", fb["id"]);
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Channel management
+// ---------------------------------------------------------------------------
+
+async fn handle_channel(client: &ControlPlaneClient, action: ChannelAction) -> Result<()> {
+    match action {
+        ChannelAction::List => {
+            let channels: Vec<Value> = client.get("/channels").await?;
+            if channels.is_empty() {
+                println!("No channels found.");
+            } else {
+                for ch in channels {
+                    println!(
+                        "  {} | {} | {}",
+                        ch["id"].as_str().unwrap_or("-"),
+                        ch["name"].as_str().unwrap_or("-"),
+                        ch["channel_type"].as_str().unwrap_or("-"),
+                    );
+                }
+            }
+        }
+        ChannelAction::Add {
+            name,
+            channel_type,
+            config_json,
+        } => {
+            let config: Value = serde_json::from_str(&config_json)
+                .map_err(|e| anyhow::anyhow!("invalid JSON for config: {}", e))?;
+            let body = json!({
+                "name": name,
+                "channel_type": channel_type,
+                "config": config,
+            });
+            let ch: Value = client.post("/channels", &body).await?;
+            println!("Created channel: {} ({})", ch["id"], ch["name"]);
+        }
+        ChannelAction::Show { id } => {
+            let ch: Value = client.get(&format!("/channels/{}", id)).await?;
+            println!("{}", serde_json::to_string_pretty(&ch)?);
+        }
+        ChannelAction::Update { id, name } => {
+            let mut body = json!({});
+            if let Some(n) = name {
+                body["name"] = json!(n);
+            }
+            let ch: Value = client.put(&format!("/channels/{}", id), &body).await?;
+            println!("Updated channel: {} ({})", ch["id"], ch["name"]);
+        }
+        ChannelAction::Remove { id } => {
+            client.delete(&format!("/channels/{}", id)).await?;
+            println!("Removed channel {}", id);
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Skill management
+// ---------------------------------------------------------------------------
+
+async fn handle_skill(client: &ControlPlaneClient, action: SkillAction) -> Result<()> {
+    match action {
+        SkillAction::List => {
+            let skills: Vec<Value> = client.get("/skills").await?;
+            if skills.is_empty() {
+                println!("No skills found.");
+            } else {
+                for sk in skills {
+                    println!(
+                        "  {} | {} | {}",
+                        sk["id"].as_str().unwrap_or("-"),
+                        sk["name"].as_str().unwrap_or("-"),
+                        sk["enabled"].as_bool().map_or("-".to_string(), |b| b.to_string()),
+                    );
+                }
+            }
+        }
+        SkillAction::Show { id } => {
+            let sk: Value = client.get(&format!("/skills/{}", id)).await?;
+            println!("{}", serde_json::to_string_pretty(&sk)?);
+        }
+        SkillAction::Uninstall { id } => {
+            client.delete(&format!("/skills/{}", id)).await?;
+            println!("Uninstalled skill {}", id);
+        }
+        SkillAction::Enable { id } => {
+            let sk: Value = client
+                .post(&format!("/skills/{}/enable", id), &json!({}))
+                .await?;
+            println!("Enabled skill {} ({})", sk["id"], sk["name"]);
+        }
+        SkillAction::Disable { id } => {
+            let sk: Value = client
+                .post(&format!("/skills/{}/disable", id), &json!({}))
+                .await?;
+            println!("Disabled skill {} ({})", sk["id"], sk["name"]);
         }
     }
     Ok(())

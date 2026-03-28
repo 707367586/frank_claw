@@ -53,6 +53,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
+cron = "0.13"
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -70,6 +71,9 @@ clap = { version = "4", features = ["derive"] }
 # Security
 zeroize = { version = "1", features = ["derive"] }
 sha2 = "0.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+hex = "0.4"
+rand = "0.8"
 
 # HAL / Platform
 notify = "7"
@@ -78,6 +82,13 @@ security-framework = "3"
 # Search / Vector
 qdrant-client = "1"
 tantivy = "0.22"
+
+# Local ML inference (candle)
+candle-core = "0.9"
+candle-nn = "0.9"
+candle-transformers = "0.9"
+hf-hub = "0.5"
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 
 # Internal crates
 clawx-types = { path = "crates/clawx-types" }

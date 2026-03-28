@@ -1,7 +1,10 @@
 pub mod agents;
+pub mod channels;
 pub mod conversations;
-pub mod memories;
 pub mod knowledge;
-pub mod vault;
+pub mod memories;
 pub mod models;
+pub mod skills;
 pub mod system;
+pub mod tasks;
+pub mod vault;

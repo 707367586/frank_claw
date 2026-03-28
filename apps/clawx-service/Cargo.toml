@@ -19,6 +19,8 @@ clawx-memory = { workspace = true }
 clawx-security = { workspace = true }
 clawx-vault = { workspace = true }
 clawx-kb = { workspace = true }
+clawx-channel = { workspace = true }
+clawx-scheduler = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

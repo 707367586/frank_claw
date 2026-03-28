@@ -248,6 +248,134 @@ CREATE TABLE IF NOT EXISTS usage_stats (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_date ON usage_stats(date);
 CREATE INDEX IF NOT EXISTS idx_usage_agent ON usage_stats(agent_id, date);
+
+-- ==========================================================================
+-- v0.2 tables: Tasks, Triggers, Runs, Notifications, Permissions, Channels, Skills
+-- ==========================================================================
+
+-- Task definitions (autonomy-architecture.md §8)
+CREATE TABLE IF NOT EXISTS tasks (
+    id                  TEXT PRIMARY KEY,
+    agent_id            TEXT NOT NULL REFERENCES agents(id),
+    name                TEXT NOT NULL,
+    goal                TEXT NOT NULL,
+    source_kind         TEXT NOT NULL,
+    lifecycle_status    TEXT NOT NULL DEFAULT 'active',
+    default_max_steps   INTEGER NOT NULL DEFAULT 10,
+    default_timeout_secs INTEGER NOT NULL DEFAULT 1800,
+    notification_policy TEXT NOT NULL DEFAULT '{}',
+    suppression_state   TEXT NOT NULL DEFAULT 'normal',
+    last_run_at         TEXT,
+    next_run_at         TEXT,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_agent_status ON tasks(agent_id, lifecycle_status);
+
+-- Task triggers
+CREATE TABLE IF NOT EXISTS task_triggers (
+    id              TEXT PRIMARY KEY,
+    task_id         TEXT NOT NULL REFERENCES tasks(id),
+    trigger_kind    TEXT NOT NULL,
+    trigger_config  TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'active',
+    next_fire_at    TEXT,
+    last_fired_at   TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_triggers_task ON task_triggers(task_id, status);
+CREATE INDEX IF NOT EXISTS idx_task_triggers_next_fire ON task_triggers(next_fire_at)
+    WHERE status = 'active';
+
+-- Task runs (execution instances)
+CREATE TABLE IF NOT EXISTS task_runs (
+    id                  TEXT PRIMARY KEY,
+    task_id             TEXT NOT NULL REFERENCES tasks(id),
+    trigger_id          TEXT REFERENCES task_triggers(id),
+    idempotency_key     TEXT NOT NULL UNIQUE,
+    run_status          TEXT NOT NULL,
+    attempt             INTEGER NOT NULL DEFAULT 1,
+    lease_owner         TEXT,
+    lease_expires_at    TEXT,
+    checkpoint          TEXT NOT NULL DEFAULT '{}',
+    tokens_used         INTEGER NOT NULL DEFAULT 0,
+    steps_count         INTEGER NOT NULL DEFAULT 0,
+    result_summary      TEXT,
+    failure_reason      TEXT,
+    feedback_kind       TEXT,
+    feedback_reason     TEXT,
+    notification_status TEXT NOT NULL DEFAULT 'pending',
+    triggered_at        TEXT NOT NULL,
+    started_at          TEXT,
+    finished_at         TEXT,
+    created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_runs_task_time ON task_runs(task_id, triggered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_runs_status ON task_runs(run_status, lease_expires_at);
+
+-- Task notifications
+CREATE TABLE IF NOT EXISTS task_notifications (
+    id                  TEXT PRIMARY KEY,
+    run_id              TEXT NOT NULL REFERENCES task_runs(id),
+    channel_kind        TEXT NOT NULL,
+    target_ref          TEXT,
+    delivery_status     TEXT NOT NULL,
+    suppression_reason  TEXT,
+    payload_summary     TEXT,
+    delivered_at        TEXT,
+    created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_notifications_run ON task_notifications(run_id, delivery_status);
+
+-- Permission profiles
+CREATE TABLE IF NOT EXISTS permission_profiles (
+    agent_id            TEXT PRIMARY KEY REFERENCES agents(id),
+    capability_scores   TEXT NOT NULL DEFAULT '{}',
+    safety_incidents    INTEGER NOT NULL DEFAULT 0,
+    last_downgraded_at  TEXT,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL
+);
+
+-- Permission change events
+CREATE TABLE IF NOT EXISTS permission_events (
+    id          TEXT PRIMARY KEY,
+    agent_id    TEXT NOT NULL REFERENCES agents(id),
+    capability  TEXT NOT NULL,
+    old_level   TEXT NOT NULL,
+    new_level   TEXT NOT NULL,
+    reason      TEXT NOT NULL,
+    run_id      TEXT REFERENCES task_runs(id),
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_permission_events_agent_time
+    ON permission_events(agent_id, created_at DESC);
+
+-- IM Channels
+CREATE TABLE IF NOT EXISTS channels (
+    id          TEXT PRIMARY KEY,
+    type        TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    config      TEXT NOT NULL,
+    agent_id    TEXT REFERENCES agents(id),
+    status      TEXT NOT NULL DEFAULT 'disconnected',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+-- Installed Skills
+CREATE TABLE IF NOT EXISTS skills (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    version     TEXT NOT NULL,
+    manifest    TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'enabled',
+    hash        TEXT NOT NULL,
+    signature   TEXT,
+    installed_at TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
 "#;
 
 const VAULT_SCHEMA: &str = r#"
@@ -304,6 +432,16 @@ mod tests {
         assert!(table_names.contains(&"llm_providers"), "missing llm_providers table");
         assert!(table_names.contains(&"usage_stats"), "missing usage_stats table");
         assert!(table_names.contains(&"memory_audit_log"), "missing memory_audit_log table");
+
+        // v0.2 tables
+        assert!(table_names.contains(&"tasks"), "missing tasks table");
+        assert!(table_names.contains(&"task_triggers"), "missing task_triggers table");
+        assert!(table_names.contains(&"task_runs"), "missing task_runs table");
+        assert!(table_names.contains(&"task_notifications"), "missing task_notifications table");
+        assert!(table_names.contains(&"permission_profiles"), "missing permission_profiles table");
+        assert!(table_names.contains(&"permission_events"), "missing permission_events table");
+        assert!(table_names.contains(&"channels"), "missing channels table");
+        assert!(table_names.contains(&"skills"), "missing skills table");
 
         // Verify vault tables
         let vault_tables: Vec<(String,)> = sqlx::query_as(

@@ -187,6 +187,35 @@ async fn add_message(
         .into_response())
 }
 
+/// Create an SSE `Event` for an execution step.
+/// Called by the Agent Loop when TaskExecutor emits step progress.
+#[allow(dead_code)]
+pub fn execution_step_event(step: &clawx_types::event::SseExecutionStep) -> Event {
+    Event::default()
+        .event("execution_step")
+        .data(serde_json::to_string(step).unwrap_or_default())
+}
+
+/// Create an SSE `Event` for a confirmation-required prompt.
+/// Called by the Agent Loop when TaskExecutor needs user confirmation.
+#[allow(dead_code)]
+pub fn confirmation_required_event(
+    step_no: u32,
+    tool_name: &str,
+    risk_level: &str,
+    reason: &str,
+) -> Event {
+    let payload = clawx_types::event::SseConfirmationRequired {
+        step_no,
+        tool_name: tool_name.to_string(),
+        risk_level: risk_level.to_string(),
+        reason: reason.to_string(),
+    };
+    Event::default()
+        .event("confirmation_required")
+        .data(serde_json::to_string(&payload).unwrap_or_default())
+}
+
 /// Invoke the LLM via streaming and return SSE events.
 async fn stream_agent_response(
     state: Arc<AppState>,
@@ -289,5 +318,57 @@ async fn stream_agent_response(
                     >,
                 >)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clawx_types::event::{SseConfirmationRequired, SseExecutionStep};
+
+    #[test]
+    fn test_execution_step_event_format() {
+        let step = SseExecutionStep {
+            step_no: 1,
+            action: "search".to_string(),
+            tool: "web_search".to_string(),
+            evidence: "found 3 results".to_string(),
+            result_summary: "Top result is Wikipedia".to_string(),
+        };
+
+        let event = execution_step_event(&step);
+        // Event::into_parts is not public, so we verify via Debug representation
+        let debug = format!("{:?}", event);
+        assert!(debug.contains("execution_step"), "event type must be execution_step");
+        assert!(debug.contains("web_search"), "data must contain tool name");
+        assert!(debug.contains("search"), "data must contain action");
+        assert!(debug.contains("found 3 results"), "data must contain evidence");
+
+        // Also verify the JSON data round-trips correctly
+        let json_str = serde_json::to_string(&step).unwrap();
+        let parsed: SseExecutionStep = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(parsed, step);
+    }
+
+    #[test]
+    fn test_confirmation_required_event_format() {
+        let event = confirmation_required_event(2, "delete_file", "high", "destructive operation");
+        let debug = format!("{:?}", event);
+        assert!(debug.contains("confirmation_required"), "event type must be confirmation_required");
+        assert!(debug.contains("delete_file"), "data must contain tool_name");
+        assert!(debug.contains("high"), "data must contain risk_level");
+        assert!(debug.contains("destructive operation"), "data must contain reason");
+
+        // Verify the struct serializes correctly
+        let payload = SseConfirmationRequired {
+            step_no: 2,
+            tool_name: "delete_file".to_string(),
+            risk_level: "high".to_string(),
+            reason: "destructive operation".to_string(),
+        };
+        let json_str = serde_json::to_string(&payload).unwrap();
+        let parsed: SseConfirmationRequired = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(parsed, payload);
+        assert_eq!(parsed.step_no, 2);
     }
 }

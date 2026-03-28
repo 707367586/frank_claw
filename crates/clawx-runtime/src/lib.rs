@@ -6,11 +6,19 @@
 
 pub mod agent_loop;
 pub mod agent_repo;
+pub mod autonomy;
+pub mod channel_repo;
 pub mod conversation_repo;
 pub mod db;
 pub mod dispatcher;
 pub mod lifecycle;
 pub mod model_repo;
+pub mod notification_repo;
+pub mod permission_repo;
+pub mod skill_loader;
+pub mod skill_repo;
+pub mod run_recovery;
+pub mod task_repo;
 
 use std::sync::Arc;
 

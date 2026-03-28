@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 clawx-types = { workspace = true }
 clawx-llm = { workspace = true }
+clawx-kb = { workspace = true }
 clawx-eventbus = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
@@ -15,3 +16,6 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

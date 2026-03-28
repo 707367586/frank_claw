@@ -63,6 +63,25 @@ pub struct Event {
     pub payload: Option<serde_json::Value>,
 }
 
+/// SSE payload for an execution step event sent during conversation streaming.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SseExecutionStep {
+    pub step_no: u32,
+    pub action: String,
+    pub tool: String,
+    pub evidence: String,
+    pub result_summary: String,
+}
+
+/// SSE payload for a confirmation-required event sent during conversation streaming.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SseConfirmationRequired {
+    pub step_no: u32,
+    pub tool_name: String,
+    pub risk_level: String,
+    pub reason: String,
+}
+
 /// Filter criteria for subscribing to events.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EventFilter {

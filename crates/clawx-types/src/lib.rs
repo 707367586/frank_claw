@@ -10,6 +10,10 @@ pub mod knowledge;
 pub mod config;
 pub mod pagination;
 pub mod traits;
+pub mod autonomy;
+pub mod permission;
+pub mod channel;
+pub mod skill;
 
 // Re-export key types at crate root for convenience.
 pub use error::{ClawxError, Result};

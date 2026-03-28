@@ -10,6 +10,9 @@ pub mod audit;
 pub mod prompt_defense;
 pub mod rate_limit;
 pub mod network;
+pub mod signing;
+pub mod wasm_sandbox;
+pub mod credential_inject;
 
 mod guard;
 pub use guard::{PermissiveSecurityGuard, ClawxSecurityGuard};

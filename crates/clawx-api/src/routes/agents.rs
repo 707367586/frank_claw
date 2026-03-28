@@ -35,6 +35,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/", get(list_agents).post(create_agent))
         .route("/{id}", get(get_agent).put(update_agent).delete(delete_agent))
         .route("/{id}/clone", post(clone_agent))
+        .route("/{id}/permission-profile", get(get_permission_profile))
 }
 
 async fn list_agents(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<AgentConfig>>> {
@@ -182,4 +183,28 @@ async fn clone_agent(
         })?;
 
     Ok((StatusCode::CREATED, Json(cloned)))
+}
+
+async fn get_permission_profile(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
+    let agent_id: AgentId = id
+        .parse()
+        .map_err(|_| err_response(StatusCode::BAD_REQUEST, "INVALID_ID", "invalid agent id"))?;
+
+    use clawx_runtime::permission_repo::SqlitePermissionRepo;
+
+    let profile = SqlitePermissionRepo::get_profile(&state.runtime.db.main, &agent_id)
+        .await
+        .map_err(internal_err)?
+        .ok_or_else(|| {
+            err_response(
+                StatusCode::NOT_FOUND,
+                "PERMISSION_PROFILE_NOT_FOUND",
+                "permission profile not found for this agent",
+            )
+        })?;
+
+    Ok(Json(serde_json::to_value(profile).unwrap()))
 }

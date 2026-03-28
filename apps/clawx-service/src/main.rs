@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
+use clawx_kb::EmbeddingService;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -90,14 +91,172 @@ async fn main() -> Result<()> {
         Arc::new(config_loader),
     );
 
-    // 7. Build API router
+    // 6b. Initialize Embedding Service
+    // Set EMBEDDING_LOCAL=true to use local candle-based inference (no server needed).
+    // Otherwise, uses HTTP-based OpenAI-compatible API (TEI, vLLM, Ollama, etc.).
+    let use_local_embedding = std::env::var("EMBEDDING_LOCAL")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+
+    let _embedding_service: Box<dyn clawx_kb::EmbeddingService> = if use_local_embedding {
+        let local_config = clawx_kb::LocalEmbeddingConfig {
+            model_id: std::env::var("EMBEDDING_MODEL")
+                .unwrap_or_else(|_| "Qwen/Qwen3-VL-Embedding-2B".to_string()),
+            revision: std::env::var("EMBEDDING_REVISION")
+                .unwrap_or_else(|_| "main".to_string()),
+            use_gpu: std::env::var("EMBEDDING_USE_GPU")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(true),
+            dimensions: std::env::var("EMBEDDING_DIMENSIONS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0),
+            normalize: true,
+            max_seq_len: std::env::var("EMBEDDING_MAX_SEQ_LEN")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(8192),
+        };
+        tracing::info!(
+            model_id = %local_config.model_id,
+            "loading local embedding service (candle)"
+        );
+        match clawx_kb::LocalEmbeddingService::load(local_config) {
+            Ok(service) => {
+                tracing::info!(
+                    dimensions = service.dimensions(),
+                    "local embedding service loaded"
+                );
+                Box::new(service)
+            }
+            Err(e) => {
+                tracing::error!(
+                    "failed to load local embedding model: {}. \
+                     Falling back to HTTP embedding service.",
+                    e
+                );
+                let fallback = clawx_kb::EmbeddingConfig::default();
+                Box::new(clawx_kb::HttpEmbeddingService::new(fallback))
+            }
+        }
+    } else {
+        let embedding_config = clawx_kb::EmbeddingConfig {
+            base_url: std::env::var("EMBEDDING_BASE_URL")
+                .unwrap_or_else(|_| "http://localhost:8080".to_string()),
+            model_name: std::env::var("EMBEDDING_MODEL")
+                .unwrap_or_else(|_| "Qwen/Qwen3-VL-Embedding-2B".to_string()),
+            api_key: std::env::var("EMBEDDING_API_KEY").ok(),
+            dimensions: std::env::var("EMBEDDING_DIMENSIONS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1536),
+            batch_size: 32,
+        };
+        tracing::info!(
+            model = %embedding_config.model_name,
+            base_url = %embedding_config.base_url,
+            "HTTP embedding service configured"
+        );
+        Box::new(clawx_kb::HttpEmbeddingService::new(embedding_config))
+    };
+
+    // 6c. Initialize Reranker Service (Qwen3-VL-Reranker-2B via TEI)
+    let reranker_config = clawx_kb::RerankerConfig {
+        base_url: std::env::var("RERANKER_BASE_URL")
+            .unwrap_or_else(|_| "http://localhost:8081".to_string()),
+        model_name: std::env::var("RERANKER_MODEL")
+            .unwrap_or_else(|_| "Qwen/Qwen3-VL-Reranker-2B".to_string()),
+    };
+    tracing::info!(
+        model = %reranker_config.model_name,
+        base_url = %reranker_config.base_url,
+        "reranker service configured"
+    );
+    let _reranker_service = clawx_kb::HttpRerankerService::new(reranker_config);
+
+    // 7. Initialize v0.2 components
+
+    // Prompt Injection Guard (L1)
+    let _injection_guard = clawx_security::prompt_defense::ClawxPromptInjectionGuard::new();
+    tracing::info!("prompt injection guard initialized (L1)");
+
+    // Run Recovery: detect and handle orphaned runs from previous service instance
+    {
+        let registry = clawx_runtime::task_repo::SqliteTaskRegistry::new(runtime.db.main.clone());
+        let recovery_config = clawx_runtime::run_recovery::RunRecoveryConfig::default();
+        match clawx_runtime::run_recovery::recover_orphaned_runs(&registry, &recovery_config).await {
+            Ok(report) => {
+                if report.orphaned_found > 0 {
+                    tracing::info!(
+                        orphaned = report.orphaned_found,
+                        failed = report.marked_failed,
+                        interrupted = report.marked_interrupted,
+                        queued = report.left_queued,
+                        retries = report.retries_scheduled,
+                        "run recovery completed"
+                    );
+                } else {
+                    tracing::info!("run recovery: no orphaned runs found");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("run recovery failed (non-fatal): {}", e);
+            }
+        }
+    }
+
+    // Task Scheduler (background trigger scanning)
+    let scheduler = clawx_scheduler::TaskScheduler::new(
+        runtime.db.main.clone(),
+        std::time::Duration::from_secs(30),
+    );
+    let _scheduler_handle = scheduler.start();
+    tracing::info!("task scheduler started (30s scan interval)");
+
+    // Channel Manager with adapter stubs
+    let mut channel_manager = clawx_channel::ChannelManager::new();
+    channel_manager.register_adapter(
+        clawx_types::channel::ChannelType::Telegram,
+        std::sync::Arc::new(clawx_channel::TelegramAdapter::new()),
+    );
+    channel_manager.register_adapter(
+        clawx_types::channel::ChannelType::Lark,
+        std::sync::Arc::new(clawx_channel::LarkAdapter::new()),
+    );
+    tracing::info!("channel manager initialized (Telegram + Lark adapters)");
+
+    // Channel connection recovery: reconnect active channels from previous session
+    {
+        let channels = clawx_runtime::channel_repo::list_channels(&runtime.db.main).await;
+        match channels {
+            Ok(channels) => {
+                let active: Vec<_> = channels.iter()
+                    .filter(|c| c.status == clawx_types::channel::ChannelStatus::Connected)
+                    .collect();
+                if !active.is_empty() {
+                    tracing::info!(count = active.len(), "reconnecting active channels");
+                    for ch in active {
+                        match channel_manager.connect(&ch).await {
+                            Ok(()) => tracing::info!(channel_id = %ch.id, "channel reconnected"),
+                            Err(e) => tracing::warn!(channel_id = %ch.id, "channel reconnect failed: {}", e),
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("channel recovery failed (non-fatal): {}", e);
+            }
+        }
+    }
+
+    // 8. Build API router
     let state = clawx_api::AppState {
         runtime,
         control_token,
     };
     let router = clawx_api::build_router(state);
 
-    // 8. Start server
+    // 9. Start server
     if let Some(port) = config.api.dev_port {
         tracing::info!(port, "starting in TCP dev mode");
         clawx_api::serve_tcp(router, port).await?;

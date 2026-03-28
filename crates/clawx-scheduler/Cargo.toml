@@ -9,3 +9,12 @@ clawx-eventbus = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 tracing = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+cron = { workspace = true }
+sqlx = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+clawx-runtime = { workspace = true }
+uuid = { workspace = true }
