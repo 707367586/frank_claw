@@ -1,20 +1,28 @@
 //! The core agent loop: receive message → assemble context → call LLM → return response.
+//!
+//! v0.2: Intent evaluation determines if a request needs multi-step execution.
+//! Simple/Assisted requests are handled inline; MultiStep requests are delegated
+//! to the TaskExecutor via Task/Run creation.
 
 use clawx_types::agent::*;
+use clawx_types::autonomy::*;
 use clawx_types::error::Result;
-use clawx_types::ids::AgentId;
+use clawx_types::ids::*;
 use clawx_types::llm::*;
 use clawx_types::memory::*;
 use tracing::{debug, info, warn};
 
+use crate::autonomy::executor::IntentEvaluator;
 use crate::Runtime;
 
 /// Run a single turn of the agent loop.
 ///
-/// 1. Assemble context (system prompt + memories + conversation history)
-/// 2. Call LLM
-/// 3. Extract memories from the conversation
-/// 4. Return the response
+/// 1. Evaluate intent (simple / assisted / multi_step)
+/// 2. Assemble context (system prompt + memories + conversation history)
+/// 3. Call LLM
+/// 4. For multi_step: create Task + Run, return execution plan summary
+/// 5. Extract memories from the conversation
+/// 6. Return the response
 pub async fn run_turn(
     runtime: &Runtime,
     agent_id: &AgentId,
@@ -22,6 +30,20 @@ pub async fn run_turn(
     user_input: &str,
 ) -> Result<AgentResponse> {
     info!(%agent_id, "agent loop: running turn");
+
+    // Step 0: Evaluate intent complexity
+    let intent = IntentEvaluator::evaluate(user_input);
+    debug!(%agent_id, ?intent, "intent evaluated");
+
+    // For multi-step requests, delegate to the autonomy system if available
+    if intent == IntentCategory::MultiStep {
+        if let Some(ref task_registry) = runtime.task_registry {
+            info!(%agent_id, "multi-step intent detected, creating task");
+            return handle_multi_step(runtime, agent_id, user_input, task_registry.clone()).await;
+        }
+        // Fall through to normal LLM call if task_registry not configured
+        debug!(%agent_id, "task_registry not available, falling back to single-turn");
+    }
 
     // Step 1: Assemble context via WorkingMemoryManager
     let ctx = runtime
@@ -114,6 +136,92 @@ pub async fn run_turn(
         tool_calls_made: response.tool_calls.len() as u32,
         tokens_used: response.usage,
     })
+}
+
+/// Handle a multi-step request: create a Task + Run for the autonomy system.
+///
+/// Returns an AgentResponse summarizing that a task has been created and
+/// is queued for execution by the TaskExecutor.
+async fn handle_multi_step(
+    _runtime: &Runtime,
+    agent_id: &AgentId,
+    user_input: &str,
+    task_registry: std::sync::Arc<dyn clawx_types::traits::TaskRegistryPort>,
+) -> Result<AgentResponse> {
+    use chrono::Utc;
+
+    let now = Utc::now();
+    let task = Task {
+        id: TaskId::new(),
+        agent_id: *agent_id,
+        name: truncate_for_name(user_input),
+        goal: user_input.to_string(),
+        source_kind: TaskSourceKind::Conversation,
+        lifecycle_status: TaskLifecycleStatus::Active,
+        default_max_steps: 10,
+        default_timeout_secs: 300,
+        notification_policy: serde_json::json!({}),
+        suppression_state: SuppressionState::default(),
+        last_run_at: None,
+        next_run_at: None,
+        created_at: now,
+        updated_at: now,
+    };
+
+    let task_id = task_registry.create_task(task).await?;
+
+    let run = Run {
+        id: RunId::new(),
+        task_id,
+        trigger_id: None,
+        idempotency_key: format!("conversation:{}:{}", agent_id, now.timestamp_millis()),
+        run_status: RunStatus::Queued,
+        attempt: 1,
+        lease_owner: None,
+        lease_expires_at: None,
+        checkpoint: serde_json::json!({}),
+        tokens_used: 0,
+        steps_count: 0,
+        result_summary: None,
+        failure_reason: None,
+        feedback_kind: None,
+        feedback_reason: None,
+        notification_status: NotificationStatus::default(),
+        triggered_at: now,
+        started_at: None,
+        finished_at: None,
+        created_at: now,
+    };
+
+    let run_id = task_registry.create_run(run).await?;
+
+    info!(%agent_id, %task_id, %run_id, "created task + run for multi-step execution");
+
+    // Return a response indicating the task is being processed.
+    // The TaskExecutor will pick up the queued Run asynchronously.
+    let content = format!(
+        "I've identified this as a multi-step task and created an execution plan.\n\
+         Task: {}\nRun: {}\nStatus: Queued for execution.",
+        task_id, run_id
+    );
+
+    Ok(AgentResponse {
+        content,
+        tool_calls_made: 0,
+        tokens_used: TokenUsage::default(),
+    })
+}
+
+/// Truncate user input to a reasonable task name (max 80 chars).
+/// Uses char count to avoid panic on multi-byte UTF-8 input.
+fn truncate_for_name(input: &str) -> String {
+    let trimmed = input.trim();
+    if trimmed.chars().count() <= 80 {
+        trimmed.to_string()
+    } else {
+        let truncated: String = trimmed.chars().take(77).collect();
+        format!("{}...", truncated)
+    }
 }
 
 /// Build the message window for memory extraction (last user + assistant pair).

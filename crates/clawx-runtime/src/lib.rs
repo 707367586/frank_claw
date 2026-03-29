@@ -7,6 +7,7 @@
 pub mod agent_loop;
 pub mod agent_repo;
 pub mod autonomy;
+pub mod channel_handler;
 pub mod channel_repo;
 pub mod conversation_repo;
 pub mod db;
@@ -37,6 +38,10 @@ pub struct Runtime {
     pub vault: Arc<dyn VaultService>,
     pub knowledge: Arc<dyn KnowledgeService>,
     pub config: Arc<dyn ConfigService>,
+    /// v0.2: Task registry for autonomous execution.
+    pub task_registry: Option<Arc<dyn TaskRegistryPort>>,
+    /// v0.2: Permission gate for risk-based access control.
+    pub permission_gate: Option<Arc<dyn PermissionGatePort>>,
 }
 
 impl Runtime {
@@ -62,7 +67,21 @@ impl Runtime {
             vault,
             knowledge,
             config,
+            task_registry: None,
+            permission_gate: None,
         }
+    }
+
+    /// Set the task registry (v0.2 autonomy).
+    pub fn with_task_registry(mut self, registry: Arc<dyn TaskRegistryPort>) -> Self {
+        self.task_registry = Some(registry);
+        self
+    }
+
+    /// Set the permission gate (v0.2 autonomy).
+    pub fn with_permission_gate(mut self, gate: Arc<dyn PermissionGatePort>) -> Self {
+        self.permission_gate = Some(gate);
+        self
     }
 }
 

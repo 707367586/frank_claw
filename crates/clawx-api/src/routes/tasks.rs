@@ -52,6 +52,8 @@ pub fn run_router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/{id}", get(get_run))
         .route("/{id}/feedback", post(submit_feedback))
+        .route("/{id}/confirm", post(confirm_run))
+        .route("/{id}/interrupt", post(interrupt_run))
 }
 
 // ---------------------------------------------------------------------------
@@ -460,4 +462,71 @@ async fn submit_feedback(
         .ok_or_else(|| err_response(StatusCode::NOT_FOUND, "RUN_NOT_FOUND", "run not found"))?;
 
     Ok(Json(serde_json::to_value(run).unwrap()))
+}
+
+/// Confirm a run that is waiting for user confirmation.
+/// Transitions: WaitingConfirmation → Running (atomic compare-and-swap).
+async fn confirm_run(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
+    use clawx_types::traits::RunUpdate;
+
+    let run_id: RunId = id.parse()
+        .map_err(|_| err_response(StatusCode::BAD_REQUEST, "INVALID_ID", "invalid run id"))?;
+
+    let updated = task_repo::transition_run_status(
+        &state.runtime.db.main,
+        run_id,
+        &[RunStatus::WaitingConfirmation],
+        RunUpdate {
+            run_status: Some(RunStatus::Running),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(internal_err)?
+    .ok_or_else(|| {
+        err_response(
+            StatusCode::CONFLICT,
+            "INVALID_STATE",
+            "run not found or not in 'waiting_confirmation' state",
+        )
+    })?;
+
+    Ok(Json(serde_json::to_value(updated).unwrap()))
+}
+
+/// Interrupt a running or waiting run.
+/// Transitions: Running/WaitingConfirmation/Queued/Planning → Interrupted (atomic).
+async fn interrupt_run(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
+    use clawx_types::traits::RunUpdate;
+
+    let run_id: RunId = id.parse()
+        .map_err(|_| err_response(StatusCode::BAD_REQUEST, "INVALID_ID", "invalid run id"))?;
+
+    let updated = task_repo::transition_run_status(
+        &state.runtime.db.main,
+        run_id,
+        &[RunStatus::Queued, RunStatus::Planning, RunStatus::Running, RunStatus::WaitingConfirmation],
+        RunUpdate {
+            run_status: Some(RunStatus::Interrupted),
+            finished_at: Some(Utc::now()),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(internal_err)?
+    .ok_or_else(|| {
+        err_response(
+            StatusCode::CONFLICT,
+            "INVALID_STATE",
+            "run not found or not in an interruptable state",
+        )
+    })?;
+
+    Ok(Json(serde_json::to_value(updated).unwrap()))
 }

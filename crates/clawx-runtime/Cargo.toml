@@ -12,6 +12,8 @@ clawx-kb = { workspace = true }
 clawx-security = { workspace = true }
 clawx-eventbus = { workspace = true }
 clawx-vault = { workspace = true }
+clawx-scheduler = { workspace = true }
+clawx-channel = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 sqlx = { workspace = true }
 async-trait = { workspace = true }

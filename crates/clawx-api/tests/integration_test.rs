@@ -1960,3 +1960,306 @@ async fn perf_memory_footprint_baseline() {
         elapsed.as_millis()
     );
 }
+
+// ===========================================================================
+// Phase A tests: Agent Loop ↔ TaskExecutor integration
+// ===========================================================================
+
+/// Helper: create state with task_registry + permission_gate injected.
+async fn make_state_with_autonomy() -> clawx_api::AppState {
+    let db = clawx_runtime::db::Database::in_memory().await.unwrap();
+    let task_registry: Arc<dyn clawx_types::traits::TaskRegistryPort> =
+        Arc::new(clawx_runtime::task_repo::SqliteTaskRegistry::new(db.main.clone()));
+    let permission_gate: Arc<dyn clawx_types::traits::PermissionGatePort> =
+        Arc::new(clawx_runtime::permission_repo::PermissionGate::new(db.main.clone()));
+
+    clawx_api::AppState {
+        runtime: clawx_runtime::Runtime::new(
+            db,
+            Arc::new(clawx_llm::StubLlmProvider),
+            Arc::new(clawx_memory::StubMemoryService),
+            Arc::new(clawx_memory::StubWorkingMemoryManager),
+            Arc::new(clawx_memory::StubMemoryExtractor),
+            Arc::new(clawx_security::PermissiveSecurityGuard),
+            Arc::new(clawx_vault::StubVaultService),
+            Arc::new(clawx_kb::StubKnowledgeService),
+            Arc::new(clawx_config::ConfigLoader::with_defaults()),
+        )
+        .with_task_registry(task_registry)
+        .with_permission_gate(permission_gate),
+        control_token: "integration-test-token".to_string(),
+    }
+}
+
+#[tokio::test]
+async fn intent_evaluator_classifies_correctly() {
+    use clawx_runtime::autonomy::executor::IntentEvaluator;
+    use clawx_types::autonomy::IntentCategory;
+
+    // Simple
+    assert_eq!(IntentEvaluator::evaluate("Hello, how are you?"), IntentCategory::Simple);
+    assert_eq!(IntentEvaluator::evaluate("What is the weather?"), IntentCategory::Simple);
+
+    // Assisted (single tool call)
+    assert_eq!(IntentEvaluator::evaluate("Search for Rust tutorials"), IntentCategory::Assisted);
+    assert_eq!(IntentEvaluator::evaluate("Find the latest news"), IntentCategory::Assisted);
+
+    // Multi-step
+    assert_eq!(
+        IntentEvaluator::evaluate("First search for data, then analyze and create a report"),
+        IntentCategory::MultiStep
+    );
+    assert_eq!(
+        IntentEvaluator::evaluate("Research the topic and then write a summary"),
+        IntentCategory::MultiStep
+    );
+}
+
+#[tokio::test]
+async fn agent_loop_creates_task_for_multi_step() {
+    let state = make_state_with_autonomy().await;
+    let router = clawx_api::build_router(state.clone());
+    let model_id = uuid::Uuid::new_v4().to_string();
+
+    // 1. Create agent
+    let (status, agent) = post(
+        &router,
+        "/agents",
+        json!({"name": "Multi-Step Bot", "role": "assistant", "model_id": model_id}),
+    ).await;
+    assert_eq!(status, 201);
+    let agent_id_str = agent["id"].as_str().unwrap().to_string();
+    let agent_id: clawx_types::ids::AgentId = agent_id_str.parse().unwrap();
+
+    // 2. Create conversation
+    let (status, conv) = post(
+        &router,
+        "/conversations",
+        json!({"agent_id": agent_id_str}),
+    ).await;
+    assert_eq!(status, 201);
+    let conv_id = conv["id"].as_str().unwrap().to_string();
+
+    // 3. Simulate multi-step input through agent loop directly
+    let conversation = clawx_types::agent::Conversation {
+        id: conv_id.parse().unwrap(),
+        agent_id,
+        title: None,
+        status: clawx_types::agent::ConversationStatus::Active,
+        messages: vec![],
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    };
+
+    let resp = clawx_runtime::agent_loop::run_turn(
+        &state.runtime,
+        &agent_id,
+        &conversation,
+        "First search for data, then analyze and create a report",
+    ).await.unwrap();
+
+    // Should indicate task creation (not a normal LLM response)
+    assert!(resp.content.contains("multi-step task"), "expected multi-step task indication, got: {}", resp.content);
+    assert!(resp.content.contains("Queued"), "expected Queued status");
+}
+
+#[tokio::test]
+async fn confirm_run_transitions_waiting_to_running() {
+    let state = make_state_with_autonomy().await;
+    let router = clawx_api::build_router(state.clone());
+    let model_id = uuid::Uuid::new_v4().to_string();
+
+    // Create agent + task
+    let (_, agent) = post(&router, "/agents", json!({"name": "Bot", "role": "assistant", "model_id": model_id})).await;
+    let agent_id = agent["id"].as_str().unwrap();
+    let (_, task) = post(&router, "/tasks", json!({"agent_id": agent_id, "name": "Test", "goal": "test"})).await;
+    let task_id_str = task["id"].as_str().unwrap().to_string();
+    let task_id: clawx_types::ids::TaskId = task_id_str.parse().unwrap();
+
+    // Create run in waiting_confirmation state
+    let now = chrono::Utc::now();
+    let run = clawx_types::autonomy::Run {
+        id: clawx_types::autonomy::RunId::new(),
+        task_id,
+        trigger_id: None,
+        idempotency_key: "confirm-test-1".into(),
+        run_status: clawx_types::autonomy::RunStatus::Queued,
+        attempt: 1,
+        lease_owner: None,
+        lease_expires_at: None,
+        checkpoint: json!({}),
+        tokens_used: 0,
+        steps_count: 0,
+        result_summary: None,
+        failure_reason: None,
+        feedback_kind: None,
+        feedback_reason: None,
+        notification_status: clawx_types::autonomy::NotificationStatus::Pending,
+        triggered_at: now,
+        started_at: None,
+        finished_at: None,
+        created_at: now,
+    };
+    let run_id = clawx_runtime::task_repo::create_run(&state.runtime.db.main, &run).await.unwrap();
+
+    // Transition to WaitingConfirmation
+    let registry = clawx_runtime::task_repo::SqliteTaskRegistry::new(state.runtime.db.main.clone());
+    use clawx_types::traits::TaskRegistryPort;
+    registry.update_run(run_id, clawx_types::traits::RunUpdate {
+        run_status: Some(clawx_types::autonomy::RunStatus::WaitingConfirmation),
+        ..Default::default()
+    }).await.unwrap();
+
+    // Confirm the run
+    let (status, updated) = post(&router, &format!("/task-runs/{}/confirm", run_id), json!({})).await;
+    assert_eq!(status, 200);
+    assert_eq!(updated["run_status"], "running");
+}
+
+#[tokio::test]
+async fn interrupt_run_stops_execution() {
+    let state = make_state_with_autonomy().await;
+    let router = clawx_api::build_router(state.clone());
+    let model_id = uuid::Uuid::new_v4().to_string();
+
+    // Create agent + task
+    let (_, agent) = post(&router, "/agents", json!({"name": "Bot", "role": "assistant", "model_id": model_id})).await;
+    let agent_id = agent["id"].as_str().unwrap();
+    let (_, task) = post(&router, "/tasks", json!({"agent_id": agent_id, "name": "Test", "goal": "test"})).await;
+    let task_id_str = task["id"].as_str().unwrap().to_string();
+    let task_id: clawx_types::ids::TaskId = task_id_str.parse().unwrap();
+
+    // Create running run
+    let now = chrono::Utc::now();
+    let run = clawx_types::autonomy::Run {
+        id: clawx_types::autonomy::RunId::new(),
+        task_id,
+        trigger_id: None,
+        idempotency_key: "interrupt-test-1".into(),
+        run_status: clawx_types::autonomy::RunStatus::Queued,
+        attempt: 1,
+        lease_owner: None,
+        lease_expires_at: None,
+        checkpoint: json!({}),
+        tokens_used: 0,
+        steps_count: 0,
+        result_summary: None,
+        failure_reason: None,
+        feedback_kind: None,
+        feedback_reason: None,
+        notification_status: clawx_types::autonomy::NotificationStatus::Pending,
+        triggered_at: now,
+        started_at: None,
+        finished_at: None,
+        created_at: now,
+    };
+    let run_id = clawx_runtime::task_repo::create_run(&state.runtime.db.main, &run).await.unwrap();
+
+    // Transition to Running
+    let registry = clawx_runtime::task_repo::SqliteTaskRegistry::new(state.runtime.db.main.clone());
+    use clawx_types::traits::TaskRegistryPort;
+    registry.update_run(run_id, clawx_types::traits::RunUpdate {
+        run_status: Some(clawx_types::autonomy::RunStatus::Running),
+        started_at: Some(now),
+        ..Default::default()
+    }).await.unwrap();
+
+    // Interrupt the run
+    let (status, updated) = post(&router, &format!("/task-runs/{}/interrupt", run_id), json!({})).await;
+    assert_eq!(status, 200);
+    assert_eq!(updated["run_status"], "interrupted");
+    assert!(updated["finished_at"].is_string(), "finished_at should be set");
+}
+
+#[tokio::test]
+async fn confirm_rejects_non_waiting_run() {
+    let state = make_state_with_autonomy().await;
+    let router = clawx_api::build_router(state.clone());
+    let model_id = uuid::Uuid::new_v4().to_string();
+
+    let (_, agent) = post(&router, "/agents", json!({"name": "Bot", "role": "assistant", "model_id": model_id})).await;
+    let agent_id = agent["id"].as_str().unwrap();
+    let (_, task) = post(&router, "/tasks", json!({"agent_id": agent_id, "name": "Test", "goal": "test"})).await;
+    let task_id: clawx_types::ids::TaskId = task["id"].as_str().unwrap().parse().unwrap();
+
+    let now = chrono::Utc::now();
+    let run = clawx_types::autonomy::Run {
+        id: clawx_types::autonomy::RunId::new(),
+        task_id,
+        trigger_id: None,
+        idempotency_key: "reject-test-1".into(),
+        run_status: clawx_types::autonomy::RunStatus::Queued,
+        attempt: 1,
+        lease_owner: None,
+        lease_expires_at: None,
+        checkpoint: json!({}),
+        tokens_used: 0,
+        steps_count: 0,
+        result_summary: None,
+        failure_reason: None,
+        feedback_kind: None,
+        feedback_reason: None,
+        notification_status: clawx_types::autonomy::NotificationStatus::Pending,
+        triggered_at: now,
+        started_at: None,
+        finished_at: None,
+        created_at: now,
+    };
+    let run_id = clawx_runtime::task_repo::create_run(&state.runtime.db.main, &run).await.unwrap();
+
+    // Try to confirm a queued (not waiting_confirmation) run — should fail
+    let (status, err) = post(&router, &format!("/task-runs/{}/confirm", run_id), json!({})).await;
+    assert_eq!(status, 409);
+    assert!(err["error"]["code"].as_str().unwrap().contains("INVALID_STATE"));
+}
+
+#[tokio::test]
+async fn interrupt_rejects_completed_run() {
+    let state = make_state_with_autonomy().await;
+    let router = clawx_api::build_router(state.clone());
+    let model_id = uuid::Uuid::new_v4().to_string();
+
+    let (_, agent) = post(&router, "/agents", json!({"name": "Bot", "role": "assistant", "model_id": model_id})).await;
+    let agent_id = agent["id"].as_str().unwrap();
+    let (_, task) = post(&router, "/tasks", json!({"agent_id": agent_id, "name": "Test", "goal": "test"})).await;
+    let task_id: clawx_types::ids::TaskId = task["id"].as_str().unwrap().parse().unwrap();
+
+    let now = chrono::Utc::now();
+    let run = clawx_types::autonomy::Run {
+        id: clawx_types::autonomy::RunId::new(),
+        task_id,
+        trigger_id: None,
+        idempotency_key: "completed-test-1".into(),
+        run_status: clawx_types::autonomy::RunStatus::Queued,
+        attempt: 1,
+        lease_owner: None,
+        lease_expires_at: None,
+        checkpoint: json!({}),
+        tokens_used: 0,
+        steps_count: 0,
+        result_summary: None,
+        failure_reason: None,
+        feedback_kind: None,
+        feedback_reason: None,
+        notification_status: clawx_types::autonomy::NotificationStatus::Pending,
+        triggered_at: now,
+        started_at: None,
+        finished_at: None,
+        created_at: now,
+    };
+    let run_id = clawx_runtime::task_repo::create_run(&state.runtime.db.main, &run).await.unwrap();
+
+    // Transition to Completed
+    let registry = clawx_runtime::task_repo::SqliteTaskRegistry::new(state.runtime.db.main.clone());
+    use clawx_types::traits::TaskRegistryPort;
+    registry.update_run(run_id, clawx_types::traits::RunUpdate {
+        run_status: Some(clawx_types::autonomy::RunStatus::Completed),
+        finished_at: Some(now),
+        ..Default::default()
+    }).await.unwrap();
+
+    // Try to interrupt a completed run — should fail
+    let (status, err) = post(&router, &format!("/task-runs/{}/interrupt", run_id), json!({})).await;
+    assert_eq!(status, 409);
+    assert!(err["error"]["code"].as_str().unwrap().contains("INVALID_STATE"));
+}

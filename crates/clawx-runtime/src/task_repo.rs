@@ -833,6 +833,47 @@ pub async fn create_run(pool: &SqlitePool, run: &Run) -> Result<RunId> {
     reg.create_run(run.clone()).await
 }
 
+/// Atomically transition a run's status, returning the updated Run.
+/// Returns `None` if the run doesn't exist or its current status doesn't match
+/// any of the `expected_statuses`. This prevents TOCTOU race conditions.
+pub async fn transition_run_status(
+    pool: &SqlitePool,
+    id: RunId,
+    expected_statuses: &[RunStatus],
+    update: RunUpdate,
+) -> Result<Option<Run>> {
+    let status_strings: Vec<String> = expected_statuses.iter().map(|s| s.to_string()).collect();
+    let in_clause = status_strings.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+
+    let new_status = update.run_status.map(|s| s.to_string());
+    let finished_at = update.finished_at.map(|dt| dt.to_rfc3339());
+
+    let query_str = format!(
+        "UPDATE task_runs SET run_status = COALESCE(?, run_status), \
+         finished_at = COALESCE(?, finished_at) \
+         WHERE id = ? AND run_status IN ({})",
+        in_clause
+    );
+    let mut query = sqlx::query(&query_str)
+        .bind(&new_status)
+        .bind(&finished_at)
+        .bind(id.to_string());
+    for status in &status_strings {
+        query = query.bind(status);
+    }
+
+    let result = query
+        .execute(pool)
+        .await
+        .map_err(|e| ClawxError::Database(format!("transition run status: {}", e)))?;
+
+    if result.rows_affected() == 0 {
+        return Ok(None);
+    }
+
+    get_run(pool, id).await
+}
+
 pub async fn record_feedback(
     pool: &SqlitePool,
     run_id: RunId,

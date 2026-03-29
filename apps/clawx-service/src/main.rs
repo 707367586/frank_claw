@@ -79,6 +79,11 @@ async fn main() -> Result<()> {
             "default".to_string(),
         ));
 
+    let task_registry: Arc<dyn clawx_types::traits::TaskRegistryPort> =
+        Arc::new(clawx_runtime::task_repo::SqliteTaskRegistry::new(db.main.clone()));
+    let permission_gate: Arc<dyn clawx_types::traits::PermissionGatePort> =
+        Arc::new(clawx_runtime::permission_repo::PermissionGate::new(db.main.clone()));
+
     let runtime = clawx_runtime::Runtime::new(
         db,
         llm,
@@ -89,7 +94,10 @@ async fn main() -> Result<()> {
         vault,
         knowledge,
         Arc::new(config_loader),
-    );
+    )
+    .with_task_registry(task_registry)
+    .with_permission_gate(permission_gate);
+    tracing::info!("runtime assembled with task registry + permission gate");
 
     // 6b. Initialize Embedding Service
     // Set EMBEDDING_LOCAL=true to use local candle-based inference (no server needed).

@@ -31,6 +31,24 @@ pub async fn create_conversation(
     Ok(id)
 }
 
+/// Find a conversation by agent ID and exact title match.
+pub async fn find_conversation_by_title(
+    pool: &SqlitePool,
+    agent_id: &str,
+    title: &str,
+) -> Result<Option<String>> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT id FROM conversations WHERE agent_id = ? AND title = ? LIMIT 1",
+    )
+    .bind(agent_id)
+    .bind(title)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ClawxError::Database(format!("find conversation by title: {}", e)))?;
+
+    Ok(row.map(|(id,)| id))
+}
+
 /// List all conversations for a given agent, ordered by most recent first.
 pub async fn list_conversations(
     pool: &SqlitePool,

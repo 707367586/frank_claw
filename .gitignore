@@ -22,5 +22,12 @@ Cargo.lock
 # ClawX runtime data (never commit)
 .clawx/
 
+# Claude Code
+.claude/
+
 # Build artifacts
 *.dSYM/
+
+# Node.js
+node_modules/
+dist/
