@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import ConversationList from "./ConversationList";
 import AgentList from "./AgentList";
 import AgentForm from "./AgentForm";
+import KnowledgeSourceList from "./KnowledgeSourceList";
 
 const panelConfig: Record<string, { title: string; placeholder: string }> = {
   "/contacts": { title: "Contacts", placeholder: "Search contacts..." },
@@ -31,10 +32,16 @@ export default function ListPanel() {
   const isChatRoute =
     location.pathname === "/" || location.pathname === "";
   const isContactsRoute = location.pathname === "/contacts";
+  const isKnowledgeRoute = location.pathname === "/knowledge";
 
   // Chat route uses the dedicated ConversationList component
   if (isChatRoute) {
     return <ConversationList />;
+  }
+
+  // Knowledge route uses KnowledgeSourceList
+  if (isKnowledgeRoute) {
+    return <KnowledgeSourceList />;
   }
 
   // Contacts route uses AgentList
