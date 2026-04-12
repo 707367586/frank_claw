@@ -26,3 +26,15 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+clawx-types = { workspace = true }
+clawx-memory = { workspace = true }
+clawx-kb = { workspace = true }
+clawx-security = { workspace = true }
+clawx-scheduler = { workspace = true }
+clawx-vault = { workspace = true }
+clawx-llm = { workspace = true }
+clawx-config = { workspace = true }
+sqlx = { workspace = true }
