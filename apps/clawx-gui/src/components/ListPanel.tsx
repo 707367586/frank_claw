@@ -11,8 +11,9 @@ const panelConfig: Record<string, { title: string; placeholder: string }> = {
 };
 
 function getConfig(pathname: string) {
+  const key = "/" + (pathname.split("/")[1] || "");
   return (
-    panelConfig[pathname] ?? {
+    panelConfig[key === "/" ? "/" : key] ?? {
       title: "Navigation",
       placeholder: "Search...",
     }
@@ -33,6 +34,7 @@ export default function ListPanel() {
         <input
           type="text"
           className="search-input"
+          aria-label={`${config.title} search`}
           placeholder={config.placeholder}
         />
       </div>

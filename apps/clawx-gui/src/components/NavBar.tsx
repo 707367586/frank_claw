@@ -26,7 +26,7 @@ export default function NavBar() {
   }
 
   return (
-    <nav className="nav-bar">
+    <nav className="nav-bar" aria-label="Main navigation">
       <div className="nav-bar-top">
         <div className="nav-logo">C</div>
         {navItems.map((item) => (
@@ -35,6 +35,7 @@ export default function NavBar() {
             className={`nav-icon-btn ${isActive(item.path) ? "active" : ""}`}
             onClick={() => navigate(item.path)}
             title={item.label}
+            aria-label={item.label}
           >
             <item.icon size={20} />
           </button>
@@ -45,6 +46,7 @@ export default function NavBar() {
           className={`nav-icon-btn ${isActive("/settings") ? "active" : ""}`}
           onClick={() => navigate("/settings")}
           title="Settings"
+          aria-label="Settings"
         >
           <Settings size={20} />
         </button>
