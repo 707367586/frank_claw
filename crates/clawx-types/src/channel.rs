@@ -49,17 +49,14 @@ impl std::str::FromStr for ChannelType {
 /// Connection status of a channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ChannelStatus {
     Connected,
+    #[default]
     Disconnected,
     Error,
 }
 
-impl Default for ChannelStatus {
-    fn default() -> Self {
-        Self::Disconnected
-    }
-}
 
 impl std::fmt::Display for ChannelStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

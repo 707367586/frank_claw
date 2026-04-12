@@ -6,16 +6,13 @@ use crate::ids::SkillId;
 /// Status of an installed skill.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SkillStatus {
+    #[default]
     Enabled,
     Disabled,
 }
 
-impl Default for SkillStatus {
-    fn default() -> Self {
-        Self::Enabled
-    }
-}
 
 impl std::fmt::Display for SkillStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -39,6 +36,7 @@ impl std::str::FromStr for SkillStatus {
 
 /// Capability declaration in a skill manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct CapabilityDeclaration {
     #[serde(default)]
     pub net_http: Vec<String>,
@@ -52,17 +50,6 @@ pub struct CapabilityDeclaration {
     pub exec_shell: Vec<String>,
 }
 
-impl Default for CapabilityDeclaration {
-    fn default() -> Self {
-        Self {
-            net_http: Vec::new(),
-            secrets: Vec::new(),
-            fs_read: Vec::new(),
-            fs_write: Vec::new(),
-            exec_shell: Vec::new(),
-        }
-    }
-}
 
 /// Skill manifest (parsed from capabilities.toml in the skill package).
 #[derive(Debug, Clone, Serialize, Deserialize)]

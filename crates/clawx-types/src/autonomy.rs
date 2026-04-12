@@ -158,17 +158,14 @@ pub struct Task {
 /// Suppression state for a task's notifications.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SuppressionState {
+    #[default]
     Normal,
     Cooldown,
     PausedByFeedback,
 }
 
-impl Default for SuppressionState {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 impl std::fmt::Display for SuppressionState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -402,18 +399,15 @@ impl std::str::FromStr for FeedbackKind {
 /// Notification delivery status for a run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum NotificationStatus {
+    #[default]
     Pending,
     Sent,
     Failed,
     Suppressed,
 }
 
-impl Default for NotificationStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
-}
 
 impl std::fmt::Display for NotificationStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

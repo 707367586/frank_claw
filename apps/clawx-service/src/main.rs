@@ -244,7 +244,7 @@ async fn main() -> Result<()> {
                 if !active.is_empty() {
                     tracing::info!(count = active.len(), "reconnecting active channels");
                     for ch in active {
-                        match channel_manager.connect(&ch).await {
+                        match channel_manager.connect(ch).await {
                             Ok(()) => tracing::info!(channel_id = %ch.id, "channel reconnected"),
                             Err(e) => tracing::warn!(channel_id = %ch.id, "channel reconnect failed: {}", e),
                         }

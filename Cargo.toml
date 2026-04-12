@@ -10,12 +10,9 @@ members = [
     "crates/clawx-kb",
     "crates/clawx-security",
     "crates/clawx-vault",
-    "crates/clawx-skills",
     "crates/clawx-scheduler",
     "crates/clawx-channel",
-    "crates/clawx-artifact",
     "crates/clawx-hal",
-    "crates/clawx-ota",
     "crates/clawx-api",
     "crates/clawx-controlplane-client",
     "crates/clawx-ffi",
@@ -100,12 +97,9 @@ clawx-memory = { path = "crates/clawx-memory" }
 clawx-kb = { path = "crates/clawx-kb" }
 clawx-security = { path = "crates/clawx-security" }
 clawx-vault = { path = "crates/clawx-vault" }
-clawx-skills = { path = "crates/clawx-skills" }
 clawx-scheduler = { path = "crates/clawx-scheduler" }
 clawx-channel = { path = "crates/clawx-channel" }
-clawx-artifact = { path = "crates/clawx-artifact" }
 clawx-hal = { path = "crates/clawx-hal" }
-clawx-ota = { path = "crates/clawx-ota" }
 clawx-api = { path = "crates/clawx-api" }
 clawx-controlplane-client = { path = "crates/clawx-controlplane-client" }
 clawx-ffi = { path = "crates/clawx-ffi" }

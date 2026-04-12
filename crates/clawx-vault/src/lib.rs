@@ -4,7 +4,6 @@
 //! before destructive agent operations, with per-file restore support.
 
 pub mod snapshot;
-pub mod restore;
 
 mod stub;
 pub use stub::StubVaultService;

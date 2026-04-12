@@ -34,6 +34,12 @@ pub struct InMemorySecretStore {
     secrets: HashMap<String, String>,
 }
 
+impl Default for InMemorySecretStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemorySecretStore {
     pub fn new() -> Self {
         Self {

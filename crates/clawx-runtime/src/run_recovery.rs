@@ -47,8 +47,10 @@ pub async fn recover_orphaned_runs(
     config: &RunRecoveryConfig,
 ) -> Result<RecoveryReport> {
     let incomplete = registry.get_incomplete_runs().await?;
-    let mut report = RecoveryReport::default();
-    report.orphaned_found = incomplete.len() as u32;
+    let mut report = RecoveryReport {
+        orphaned_found: incomplete.len() as u32,
+        ..Default::default()
+    };
 
     for run in incomplete {
         match run.run_status {

@@ -13,7 +13,6 @@ clawx-runtime = { workspace = true }
 clawx-config = { workspace = true }
 clawx-api = { workspace = true }
 clawx-eventbus = { workspace = true }
-clawx-hal = { workspace = true }
 clawx-llm = { workspace = true }
 clawx-memory = { workspace = true }
 clawx-security = { workspace = true }

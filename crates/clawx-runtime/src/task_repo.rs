@@ -774,7 +774,7 @@ pub async fn delete_task(pool: &SqlitePool, id: TaskId) -> Result<()> {
 pub async fn update_lifecycle(pool: &SqlitePool, id: TaskId, status: &str) -> Result<()> {
     let reg = SqliteTaskRegistry::new(pool.clone());
     let lifecycle = TaskLifecycleStatus::from_str(status)
-        .map_err(|e| ClawxError::Validation(e))?;
+        .map_err(ClawxError::Validation)?;
     reg.update_lifecycle(id, lifecycle).await
 }
 
@@ -803,10 +803,9 @@ pub async fn update_trigger(
     let reg = SqliteTaskRegistry::new(pool.clone());
     let update = TriggerUpdate {
         trigger_config: trigger_config.cloned(),
-        status: status.map(|s| TriggerStatus::from_str(s).ok()).flatten(),
+        status: status.and_then(|s| TriggerStatus::from_str(s).ok()),
         next_fire_at: next_fire_at
-            .map(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc)))
-            .flatten(),
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))),
         last_fired_at: None,
     };
     reg.update_trigger(id, update).await
@@ -882,7 +881,7 @@ pub async fn record_feedback(
 ) -> Result<()> {
     let reg = SqliteTaskRegistry::new(pool.clone());
     let feedback = FeedbackKind::from_str(kind)
-        .map_err(|e| ClawxError::Validation(e))?;
+        .map_err(ClawxError::Validation)?;
     reg.record_feedback(run_id, feedback, reason.map(String::from)).await
 }
 

@@ -189,6 +189,7 @@ async fn add_message(
 
 /// Create an SSE `Event` for an execution step.
 /// Called by the Agent Loop when TaskExecutor emits step progress.
+#[allow(dead_code)]
 pub fn execution_step_event(step: &clawx_types::event::SseExecutionStep) -> Event {
     Event::default()
         .event("execution_step")
@@ -197,6 +198,7 @@ pub fn execution_step_event(step: &clawx_types::event::SseExecutionStep) -> Even
 
 /// Create an SSE `Event` for a confirmation-required prompt.
 /// Called by the Agent Loop when TaskExecutor needs user confirmation.
+#[allow(dead_code)]
 pub fn confirmation_required_event(
     step_no: u32,
     tool_name: &str,

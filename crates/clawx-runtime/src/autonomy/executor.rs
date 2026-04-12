@@ -74,21 +74,21 @@ impl ExecutionState {
 
     /// Transition to a new status. Returns error if transition is invalid.
     pub fn transition(&mut self, new_status: RunStatus) -> Result<()> {
-        let valid = match (&self.status, &new_status) {
-            (RunStatus::Queued, RunStatus::Planning) => true,
-            (RunStatus::Planning, RunStatus::Running) => true,
-            (RunStatus::Running, RunStatus::Planning) => true,
-            (RunStatus::Running, RunStatus::WaitingConfirmation) => true,
-            (RunStatus::Running, RunStatus::Completed) => true,
-            (RunStatus::Running, RunStatus::Failed) => true,
-            (RunStatus::Running, RunStatus::Interrupted) => true,
-            (RunStatus::WaitingConfirmation, RunStatus::Running) => true,
-            (RunStatus::WaitingConfirmation, RunStatus::Interrupted) => true,
-            (RunStatus::Planning, RunStatus::Failed) => true,
-            (RunStatus::Planning, RunStatus::Interrupted) => true,
-            (RunStatus::Queued, RunStatus::Interrupted) => true,
-            _ => false,
-        };
+        let valid = matches!(
+            (&self.status, &new_status),
+            (RunStatus::Queued, RunStatus::Planning)
+                | (RunStatus::Planning, RunStatus::Running)
+                | (RunStatus::Running, RunStatus::Planning)
+                | (RunStatus::Running, RunStatus::WaitingConfirmation)
+                | (RunStatus::Running, RunStatus::Completed)
+                | (RunStatus::Running, RunStatus::Failed)
+                | (RunStatus::Running, RunStatus::Interrupted)
+                | (RunStatus::WaitingConfirmation, RunStatus::Running)
+                | (RunStatus::WaitingConfirmation, RunStatus::Interrupted)
+                | (RunStatus::Planning, RunStatus::Failed)
+                | (RunStatus::Planning, RunStatus::Interrupted)
+                | (RunStatus::Queued, RunStatus::Interrupted)
+        );
 
         if valid {
             self.status = new_status;

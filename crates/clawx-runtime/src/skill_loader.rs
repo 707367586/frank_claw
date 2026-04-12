@@ -7,6 +7,7 @@ use clawx_security::wasm_sandbox::{SandboxConfig, WasmSandbox};
 use sqlx::SqlitePool;
 
 /// Configuration for skill loading.
+#[derive(Default)]
 pub struct SkillLoaderConfig {
     /// Optional Ed25519 public key hex for signature verification.
     pub public_key_hex: Option<String>,
@@ -16,15 +17,6 @@ pub struct SkillLoaderConfig {
     pub sandbox_config: SandboxConfig,
 }
 
-impl Default for SkillLoaderConfig {
-    fn default() -> Self {
-        Self {
-            public_key_hex: None,
-            require_signature: false,
-            sandbox_config: SandboxConfig::default(),
-        }
-    }
-}
 
 /// SkillLoader: validates, verifies, and prepares skills for sandboxed execution.
 pub struct SkillLoader {

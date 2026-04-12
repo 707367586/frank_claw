@@ -85,11 +85,10 @@ impl AttentionPolicyEngine {
         }
 
         // Rule 5: Quiet hours check
-        if self.is_quiet_hours(ctx.now) {
-            if ctx.run_status == RunStatus::Completed {
+        if self.is_quiet_hours(ctx.now)
+            && ctx.run_status == RunStatus::Completed {
                 return AttentionDecision::SendDigest;
             }
-        }
 
         // Default: send now
         AttentionDecision::SendNow

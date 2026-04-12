@@ -46,8 +46,10 @@ impl std::str::FromStr for CapabilityDimension {
 /// Aligned with autonomy-architecture.md §6.3.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TrustLevel {
     /// Default, all operations need confirmation.
+    #[default]
     L0Restricted,
     /// Low-risk reads auto-allowed.
     L1ReadTrusted,
@@ -57,11 +59,6 @@ pub enum TrustLevel {
     L3ChannelTrusted,
 }
 
-impl Default for TrustLevel {
-    fn default() -> Self {
-        Self::L0Restricted
-    }
-}
 
 impl std::fmt::Display for TrustLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

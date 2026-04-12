@@ -5,7 +5,6 @@
 //! durable recall across conversations.
 
 pub mod working;
-pub mod short_term;
 pub mod long_term;
 pub mod decay;
 pub mod extraction;

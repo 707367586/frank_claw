@@ -7,7 +7,6 @@ edition.workspace = true
 clawx-types = { workspace = true }
 clawx-llm = { workspace = true }
 clawx-eventbus = { workspace = true }
-clawx-hal = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
 async-trait = { workspace = true }
 sqlx = { workspace = true }
