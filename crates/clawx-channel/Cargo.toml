@@ -9,7 +9,9 @@ clawx-eventbus = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 tracing = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+reqwest = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]
