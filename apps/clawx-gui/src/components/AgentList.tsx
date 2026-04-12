@@ -2,19 +2,15 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, Plus } from "lucide-react";
 import { listAgents } from "../lib/api";
+import { STATUS_COLORS } from "../lib/constants";
 import type { Agent } from "../lib/types";
-
-const STATUS_COLORS: Record<Agent["status"], string> = {
-  idle: "#4ade80",
-  working: "#facc15",
-  error: "#f87171",
-  offline: "#6b7280",
-};
 
 export default function AgentList({
   onCreateAgent,
+  refreshKey = 0,
 }: {
   onCreateAgent: () => void;
+  refreshKey?: number;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get("agent");
@@ -38,7 +34,7 @@ export default function AgentList({
 
   useEffect(() => {
     loadAgents();
-  }, [loadAgents]);
+  }, [loadAgents, refreshKey]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();

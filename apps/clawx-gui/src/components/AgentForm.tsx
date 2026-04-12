@@ -24,7 +24,7 @@ export default function AgentForm({ agent, onSaved, onCancel }: AgentFormProps) 
     setSaving(true);
     setError(null);
     try {
-      const data: Record<string, string | null> = {
+      const data: Partial<Omit<Agent, "id" | "created_at" | "updated_at" | "status">> = {
         name: name.trim(),
         role: role.trim(),
         system_prompt: systemPrompt.trim() || "",

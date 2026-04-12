@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { Search } from "lucide-react";
 import ConversationList from "./ConversationList";
@@ -21,6 +21,12 @@ function getConfig(pathname: string) {
 export default function ListPanel() {
   const location = useLocation();
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleAgentCreated = useCallback(() => {
+    setShowCreateForm(false);
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   const isChatRoute =
     location.pathname === "/" || location.pathname === "";
@@ -35,14 +41,13 @@ export default function ListPanel() {
   if (isContactsRoute) {
     return (
       <>
-        <AgentList onCreateAgent={() => setShowCreateForm(true)} />
+        <AgentList
+          onCreateAgent={() => setShowCreateForm(true)}
+          refreshKey={refreshKey}
+        />
         {showCreateForm && (
           <AgentForm
-            onSaved={() => {
-              setShowCreateForm(false);
-              // Force re-render by navigating to same route
-              window.location.reload();
-            }}
+            onSaved={handleAgentCreated}
             onCancel={() => setShowCreateForm(false)}
           />
         )}

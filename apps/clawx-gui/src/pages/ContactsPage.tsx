@@ -9,24 +9,11 @@ import {
   pinMemory,
   getPermissionProfile,
 } from "../lib/api";
+import { STATUS_COLORS, MEMORY_TYPE_COLORS } from "../lib/constants";
 import type { Agent, Memory, PermissionProfile } from "../lib/types";
 import AgentForm from "../components/AgentForm";
 
 type Tab = "profile" | "memories" | "permissions";
-
-const STATUS_COLORS: Record<Agent["status"], string> = {
-  idle: "#4ade80",
-  working: "#facc15",
-  error: "#f87171",
-  offline: "#6b7280",
-};
-
-const MEMORY_TYPE_COLORS: Record<Memory["memory_type"], string> = {
-  fact: "#60a5fa",
-  preference: "#a78bfa",
-  event: "#34d399",
-  skill: "#fbbf24",
-};
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -48,6 +35,9 @@ export default function ContactsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("profile");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [memoriesError, setMemoriesError] = useState<string | null>(null);
+  const [permissionsError, setPermissionsError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [memorySearch, setMemorySearch] = useState("");
 
@@ -65,21 +55,28 @@ export default function ContactsPage() {
   }, []);
 
   const loadMemories = useCallback(async (id: string) => {
+    setMemoriesError(null);
     try {
       const data = await listMemories(id);
       setMemories(data);
-    } catch {
-      // Silently fail — memories tab will show empty
+    } catch (err) {
       setMemories([]);
+      setMemoriesError(
+        err instanceof Error ? err.message : "Failed to load memories",
+      );
     }
   }, []);
 
   const loadPermissions = useCallback(async (id: string) => {
+    setPermissionsError(null);
     try {
       const data = await getPermissionProfile(id);
       setPermissions(data);
-    } catch {
+    } catch (err) {
       setPermissions(null);
+      setPermissionsError(
+        err instanceof Error ? err.message : "Failed to load permissions",
+      );
     }
   }, []);
 
@@ -104,8 +101,10 @@ export default function ContactsPage() {
 
     try {
       await deleteAgent(agent.id);
+      setAgent(null);
+      setMemories([]);
+      setPermissions(null);
       setSearchParams({});
-      window.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete agent");
     }
@@ -113,11 +112,14 @@ export default function ContactsPage() {
 
   const handleDeleteMemory = useCallback(
     async (memoryId: string) => {
+      setMutationError(null);
       try {
         await deleteMemory(memoryId);
         setMemories((prev) => prev.filter((m) => m.id !== memoryId));
       } catch (err) {
-        console.error("Failed to delete memory:", err);
+        setMutationError(
+          err instanceof Error ? err.message : "Failed to delete memory",
+        );
       }
     },
     [],
@@ -125,13 +127,16 @@ export default function ContactsPage() {
 
   const handlePinMemory = useCallback(
     async (memoryId: string) => {
+      setMutationError(null);
       try {
         const updated = await pinMemory(memoryId);
         setMemories((prev) =>
           prev.map((m) => (m.id === memoryId ? updated : m)),
         );
       } catch (err) {
-        console.error("Failed to pin memory:", err);
+        setMutationError(
+          err instanceof Error ? err.message : "Failed to update memory pin",
+        );
       }
     },
     [],
@@ -278,6 +283,12 @@ export default function ContactsPage() {
 
         {activeTab === "memories" && (
           <div className="memories-section">
+            {mutationError && (
+              <p className="form-error">{mutationError}</p>
+            )}
+            {memoriesError && (
+              <p className="form-error">{memoriesError}</p>
+            )}
             <div className="memories-search">
               <Search size={14} className="search-icon" />
               <input
@@ -338,6 +349,9 @@ export default function ContactsPage() {
 
         {activeTab === "permissions" && (
           <div className="permissions-section">
+            {permissionsError && (
+              <p className="form-error">{permissionsError}</p>
+            )}
             {permissions ? (
               <>
                 <div className="profile-field">
