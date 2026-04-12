@@ -7,6 +7,7 @@ import AgentForm from "./AgentForm";
 import KnowledgeSourceList from "./KnowledgeSourceList";
 import TaskList from "./TaskList";
 import ChannelList from "./ChannelList";
+import SettingsList from "./SettingsList";
 
 const panelConfig: Record<string, { title: string; placeholder: string }> = {
   "/contacts": { title: "Contacts", placeholder: "Search contacts..." },
@@ -37,6 +38,7 @@ export default function ListPanel() {
   const isKnowledgeRoute = location.pathname === "/knowledge";
   const isTasksRoute = location.pathname === "/tasks";
   const isConnectorsRoute = location.pathname === "/connectors";
+  const isSettingsRoute = location.pathname === "/settings";
 
   // Chat route uses the dedicated ConversationList component
   if (isChatRoute) {
@@ -74,6 +76,11 @@ export default function ListPanel() {
   // Connectors route uses ChannelList
   if (isConnectorsRoute) {
     return <ChannelList />;
+  }
+
+  // Settings route uses SettingsList
+  if (isSettingsRoute) {
+    return <SettingsList />;
   }
 
   const config = getConfig(location.pathname);
