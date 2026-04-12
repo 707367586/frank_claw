@@ -2,6 +2,7 @@ import type {
   Agent,
   Channel,
   Conversation,
+  KnowledgeSearchResult,
   KnowledgeSource,
   Memory,
   Message,
@@ -17,15 +18,15 @@ import type {
 
 // ── Configuration ──
 
-const BASE_URL = "http://localhost:9090";
-const AUTH_TOKEN = "dev-token";
+const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:9090";
+const AUTH_TOKEN = import.meta.env.VITE_AUTH_TOKEN ?? "dev-token";
 
-// ── Core fetch wrapper ──
+// ── Core fetch wrappers ──
 
-export async function fetchApi<T>(
+async function baseFetch(
   path: string,
   options: RequestInit = {},
-): Promise<T> {
+): Promise<Response> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${AUTH_TOKEN}`,
     ...(options.headers as Record<string, string>),
@@ -53,9 +54,26 @@ export async function fetchApi<T>(
     throw new Error(message);
   }
 
+  return res;
+}
+
+export async function fetchApi<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const res = await baseFetch(path, options);
   const text = await res.text();
-  if (!text) return undefined as T;
+  if (!text) {
+    throw new Error(`Expected JSON response body from ${path}, got empty`);
+  }
   return JSON.parse(text) as T;
+}
+
+export async function fetchApiVoid(
+  path: string,
+  options: RequestInit = {},
+): Promise<void> {
+  await baseFetch(path, options);
 }
 
 // ── SSE streaming ──
@@ -68,6 +86,7 @@ export function connectSSE(
   body?: unknown,
 ): AbortController {
   const controller = new AbortController();
+  const handleError = onError ?? console.error;
 
   fetch(`${BASE_URL}${path}`, {
     method: "POST",
@@ -112,7 +131,7 @@ export function connectSSE(
     })
     .catch((err) => {
       if (err.name !== "AbortError") {
-        onError?.(err);
+        handleError(err);
       }
     });
 
@@ -126,7 +145,7 @@ export function listAgents(): Promise<Agent[]> {
 }
 
 export function getAgent(id: string): Promise<Agent> {
-  return fetchApi(`/agents/${id}`);
+  return fetchApi(`/agents/${encodeURIComponent(id)}`);
 }
 
 export function createAgent(
@@ -142,21 +161,25 @@ export function updateAgent(
   id: string,
   data: Partial<Omit<Agent, "id" | "created_at" | "updated_at">>,
 ): Promise<Agent> {
-  return fetchApi(`/agents/${id}`, {
+  return fetchApi(`/agents/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
 export function deleteAgent(id: string): Promise<void> {
-  return fetchApi(`/agents/${id}`, { method: "DELETE" });
+  return fetchApiVoid(`/agents/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 // ── Conversations ──
 
 export function listConversations(agentId?: string): Promise<Conversation[]> {
-  const params = agentId ? `?agent_id=${agentId}` : "";
-  return fetchApi(`/conversations${params}`);
+  const params = new URLSearchParams();
+  if (agentId) params.set("agent_id", agentId);
+  const qs = params.toString();
+  return fetchApi(`/conversations${qs ? `?${qs}` : ""}`);
 }
 
 export function createConversation(agentId: string): Promise<Conversation> {
@@ -167,20 +190,22 @@ export function createConversation(agentId: string): Promise<Conversation> {
 }
 
 export function deleteConversation(id: string): Promise<void> {
-  return fetchApi(`/conversations/${id}`, { method: "DELETE" });
+  return fetchApiVoid(`/conversations/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 // ── Messages ──
 
 export function listMessages(convId: string): Promise<Message[]> {
-  return fetchApi(`/conversations/${convId}/messages`);
+  return fetchApi(`/conversations/${encodeURIComponent(convId)}/messages`);
 }
 
 export function sendMessage(
   convId: string,
   content: string,
 ): Promise<Message> {
-  return fetchApi(`/conversations/${convId}/messages`, {
+  return fetchApi(`/conversations/${encodeURIComponent(convId)}/messages`, {
     method: "POST",
     body: JSON.stringify({ content }),
   });
@@ -194,7 +219,7 @@ export function sendMessageStream(
   onError?: (err: Error) => void,
 ): AbortController {
   return connectSSE(
-    `/conversations/${convId}/messages?stream=true`,
+    `/conversations/${encodeURIComponent(convId)}/messages?stream=true`,
     onMessage,
     onDone,
     onError,
@@ -218,15 +243,19 @@ export function listMemories(
 }
 
 export function getMemory(id: string): Promise<Memory> {
-  return fetchApi(`/memories/${id}`);
+  return fetchApi(`/memories/${encodeURIComponent(id)}`);
 }
 
 export function deleteMemory(id: string): Promise<void> {
-  return fetchApi(`/memories/${id}`, { method: "DELETE" });
+  return fetchApiVoid(`/memories/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 export function pinMemory(id: string): Promise<Memory> {
-  return fetchApi(`/memories/${id}/pin`, { method: "POST" });
+  return fetchApi(`/memories/${encodeURIComponent(id)}/pin`, {
+    method: "POST",
+  });
 }
 
 // ── Knowledge ──
@@ -246,13 +275,15 @@ export function addKnowledgeSource(
 }
 
 export function deleteKnowledgeSource(id: string): Promise<void> {
-  return fetchApi(`/knowledge/${id}`, { method: "DELETE" });
+  return fetchApiVoid(`/knowledge/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 export function searchKnowledge(
   query: string,
   agentId?: string,
-): Promise<unknown[]> {
+): Promise<KnowledgeSearchResult[]> {
   const params = new URLSearchParams({ query });
   if (agentId) params.set("agent_id", agentId);
   return fetchApi(`/knowledge/search?${params}`);
@@ -265,11 +296,13 @@ export function listVaultSnapshots(): Promise<VaultSnapshot[]> {
 }
 
 export function getSnapshot(id: string): Promise<VaultSnapshot> {
-  return fetchApi(`/vault/${id}`);
+  return fetchApi(`/vault/${encodeURIComponent(id)}`);
 }
 
 export function rollbackSnapshot(id: string): Promise<void> {
-  return fetchApi(`/vault/${id}/rollback`, { method: "POST" });
+  return fetchApiVoid(`/vault/${encodeURIComponent(id)}/rollback`, {
+    method: "POST",
+  });
 }
 
 // ── Models ──
@@ -288,7 +321,9 @@ export function createModel(
 }
 
 export function deleteModel(id: string): Promise<void> {
-  return fetchApi(`/models/${id}`, { method: "DELETE" });
+  return fetchApiVoid(`/models/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 // ── System ──
@@ -304,8 +339,10 @@ export function getStats(): Promise<SystemStats> {
 // ── Tasks ──
 
 export function listTasks(agentId?: string): Promise<Task[]> {
-  const params = agentId ? `?agent_id=${agentId}` : "";
-  return fetchApi(`/tasks${params}`);
+  const params = new URLSearchParams();
+  if (agentId) params.set("agent_id", agentId);
+  const qs = params.toString();
+  return fetchApi(`/tasks${qs ? `?${qs}` : ""}`);
 }
 
 export function createTask(
@@ -318,39 +355,48 @@ export function createTask(
 }
 
 export function getTask(id: string): Promise<Task> {
-  return fetchApi(`/tasks/${id}`);
+  return fetchApi(`/tasks/${encodeURIComponent(id)}`);
 }
 
 export function updateTask(
   id: string,
   data: Partial<Omit<Task, "id" | "created_at">>,
 ): Promise<Task> {
-  return fetchApi(`/tasks/${id}`, {
+  return fetchApi(`/tasks/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
 export function deleteTask(id: string): Promise<void> {
-  return fetchApi(`/tasks/${id}`, { method: "DELETE" });
+  return fetchApiVoid(`/tasks/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 export function pauseTask(id: string): Promise<Task> {
-  return fetchApi(`/tasks/${id}/pause`, { method: "POST" });
+  return fetchApi(`/tasks/${encodeURIComponent(id)}/pause`, {
+    method: "POST",
+  });
 }
 
 export function resumeTask(id: string): Promise<Task> {
-  return fetchApi(`/tasks/${id}/resume`, { method: "POST" });
+  return fetchApi(`/tasks/${encodeURIComponent(id)}/resume`, {
+    method: "POST",
+  });
 }
 
 export function archiveTask(id: string): Promise<Task> {
-  return fetchApi(`/tasks/${id}/archive`, { method: "POST" });
+  return fetchApi(`/tasks/${encodeURIComponent(id)}/archive`, {
+    method: "POST",
+  });
 }
 
 // ── Triggers ──
 
 export function listTriggers(taskId: string): Promise<Trigger[]> {
-  return fetchApi(`/task-triggers?task_id=${taskId}`);
+  const params = new URLSearchParams({ task_id: taskId });
+  return fetchApi(`/task-triggers?${params}`);
 }
 
 export function addTrigger(
@@ -367,24 +413,27 @@ export function updateTrigger(
   id: string,
   data: Partial<Omit<Trigger, "id" | "task_id" | "created_at">>,
 ): Promise<Trigger> {
-  return fetchApi(`/task-triggers/${id}`, {
+  return fetchApi(`/task-triggers/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
 export function deleteTrigger(id: string): Promise<void> {
-  return fetchApi(`/task-triggers/${id}`, { method: "DELETE" });
+  return fetchApiVoid(`/task-triggers/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 // ── Runs ──
 
 export function listRuns(taskId: string): Promise<Run[]> {
-  return fetchApi(`/task-runs?task_id=${taskId}`);
+  const params = new URLSearchParams({ task_id: taskId });
+  return fetchApi(`/task-runs?${params}`);
 }
 
 export function getRun(id: string): Promise<Run> {
-  return fetchApi(`/task-runs/${id}`);
+  return fetchApi(`/task-runs/${encodeURIComponent(id)}`);
 }
 
 export function submitFeedback(
@@ -392,10 +441,13 @@ export function submitFeedback(
   kind: string,
   reason?: string,
 ): Promise<void> {
-  return fetchApi(`/task-runs/${runId}/feedback`, {
-    method: "POST",
-    body: JSON.stringify({ kind, reason }),
-  });
+  return fetchApiVoid(
+    `/task-runs/${encodeURIComponent(runId)}/feedback`,
+    {
+      method: "POST",
+      body: JSON.stringify({ kind, reason }),
+    },
+  );
 }
 
 // ── Channels ──
@@ -414,29 +466,35 @@ export function createChannel(
 }
 
 export function getChannel(id: string): Promise<Channel> {
-  return fetchApi(`/channels/${id}`);
+  return fetchApi(`/channels/${encodeURIComponent(id)}`);
 }
 
 export function updateChannel(
   id: string,
   data: Partial<Omit<Channel, "id" | "created_at">>,
 ): Promise<Channel> {
-  return fetchApi(`/channels/${id}`, {
+  return fetchApi(`/channels/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
 export function deleteChannel(id: string): Promise<void> {
-  return fetchApi(`/channels/${id}`, { method: "DELETE" });
+  return fetchApiVoid(`/channels/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 export function connectChannel(id: string): Promise<Channel> {
-  return fetchApi(`/channels/${id}/connect`, { method: "POST" });
+  return fetchApi(`/channels/${encodeURIComponent(id)}/connect`, {
+    method: "POST",
+  });
 }
 
 export function disconnectChannel(id: string): Promise<Channel> {
-  return fetchApi(`/channels/${id}/disconnect`, { method: "POST" });
+  return fetchApi(`/channels/${encodeURIComponent(id)}/disconnect`, {
+    method: "POST",
+  });
 }
 
 // ── Skills ──
@@ -446,17 +504,23 @@ export function listSkills(): Promise<Skill[]> {
 }
 
 export function getSkill(id: string): Promise<Skill> {
-  return fetchApi(`/skills/${id}`);
+  return fetchApi(`/skills/${encodeURIComponent(id)}`);
 }
 
 export function deleteSkill(id: string): Promise<void> {
-  return fetchApi(`/skills/${id}`, { method: "DELETE" });
+  return fetchApiVoid(`/skills/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 export function enableSkill(id: string): Promise<Skill> {
-  return fetchApi(`/skills/${id}/enable`, { method: "POST" });
+  return fetchApi(`/skills/${encodeURIComponent(id)}/enable`, {
+    method: "POST",
+  });
 }
 
 export function disableSkill(id: string): Promise<Skill> {
-  return fetchApi(`/skills/${id}/disable`, { method: "POST" });
+  return fetchApi(`/skills/${encodeURIComponent(id)}/disable`, {
+    method: "POST",
+  });
 }

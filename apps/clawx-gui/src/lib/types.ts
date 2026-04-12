@@ -174,3 +174,10 @@ export interface ApiError {
   code: string;
   message: string;
 }
+
+export interface KnowledgeSearchResult {
+  chunk_id: string;
+  content: string;
+  source_path: string;
+  score: number;
+}
