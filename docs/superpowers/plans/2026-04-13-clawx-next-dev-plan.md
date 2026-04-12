@@ -326,7 +326,7 @@ cd apps/clawx-gui && pnpm add react-router-dom react-markdown remark-gfm highlig
 
 ---
 
-## Phase C: 真实集成 + v0.2 验收
+## Phase C: 真实集成 + v0.2 验收 ✅
 
 > **目标：** 完成真实外部集成和性能验收，交付 v0.2。
 
@@ -335,54 +335,54 @@ cd apps/clawx-gui && pnpm add react-router-dom react-markdown remark-gfm highlig
 **Files:**
 - Modify: `crates/clawx-channel/src/lib.rs`（或新建 `telegram.rs`）
 
-- [ ] **Step 1:** 实现 Telegram Bot Long Polling
+- [x] **Step 1:** 实现 Telegram Bot Long Polling
   - `getUpdates` API 轮询
   - 消息解析（text / document / photo）
   - 通过 ChannelAdapter trait 接入
 
-- [ ] **Step 2:** 实现出站消息
+- [x] **Step 2:** 实现出站消息
   - `sendMessage` API
   - Markdown 格式化
   - 文件发送（`sendDocument`）
 
-- [ ] **Step 3:** 端到端测试：用真实 Telegram Bot Token，发消息 → Agent 回复 → Telegram 收到
+- [x] **Step 3:** 端到端测试：用真实 Telegram Bot Token，发消息 → Agent 回复 → Telegram 收到
 
-- [ ] **Step 4:** Commit
+- [x] **Step 4:** Commit
 
 ### Task C2: 飞书/Lark WebSocket 接入
 
 **Files:**
 - Modify: `crates/clawx-channel/src/lib.rs`（或新建 `lark.rs`）
 
-- [ ] **Step 1:** 实现 Lark WebSocket 长连接
+- [x] **Step 1:** 实现 Lark WebSocket 长连接
   - 获取 tenant_access_token
   - WebSocket 连接 + 心跳
   - 消息事件解析
 
-- [ ] **Step 2:** 实现出站消息
+- [x] **Step 2:** 实现出站消息
   - `/im/v1/messages` API 发送消息
   - Rich text 卡片消息
 
-- [ ] **Step 3:** 端到端测试
+- [x] **Step 3:** 端到端测试
 
-- [ ] **Step 4:** Commit
+- [x] **Step 4:** Commit
 
 ### Task C3: 性能基准 + 安全验收
 
-- [ ] **Step 1:** 编写性能基准测试框架
+- [x] **Step 1:** 编写性能基准测试框架
   - 冷启动时间
   - 记忆召回 P50/P95
   - 知识库检索 P50/P95
   - 多步执行 10 步完成时间
   - 定时任务触发精度
 
-- [ ] **Step 2:** 启动 Embedding 服务（TEI + Qwen3-VL-Embedding-2B），运行向量检索性能测试
+- [x] **Step 2:** 启动 Embedding 服务（TEI + Qwen3-VL-Embedding-2B），运行向量检索性能测试
 
-- [ ] **Step 3:** WASM 沙箱逃逸测试（需编写真实 WASM 测试二进制）
+- [x] **Step 3:** WASM 沙箱逃逸测试（需编写真实 WASM 测试二进制）
 
-- [ ] **Step 4:** 生成 v0.2 验收报告
+- [x] **Step 4:** 生成 v0.2 验收报告
 
-- [ ] **Step 5:** Commit
+- [x] **Step 5:** Commit
 
 ---
 
