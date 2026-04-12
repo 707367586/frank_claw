@@ -73,12 +73,7 @@ export default function ListPanel() {
 
   // Connectors route uses ChannelList
   if (isConnectorsRoute) {
-    return (
-      <ChannelList
-        onAddChannel={() => setShowCreateForm(true)}
-        refreshKey={refreshKey}
-      />
-    );
+    return <ChannelList />;
   }
 
   const config = getConfig(location.pathname);
