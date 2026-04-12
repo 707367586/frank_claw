@@ -7,6 +7,7 @@ import type {
   Memory,
   Message,
   ModelProvider,
+  PermissionProfile,
   Run,
   Skill,
   SystemHealth,
@@ -171,6 +172,12 @@ export function deleteAgent(id: string): Promise<void> {
   return fetchApiVoid(`/agents/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
+}
+
+export function getPermissionProfile(
+  agentId: string,
+): Promise<PermissionProfile> {
+  return fetchApi(`/agents/${encodeURIComponent(agentId)}/permission-profile`);
 }
 
 // ── Conversations ──
