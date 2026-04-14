@@ -32,6 +32,9 @@ Cargo.lock
 node_modules/
 dist/
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # git worktrees (isolated workspaces)
 .worktrees/
 
