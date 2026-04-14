@@ -31,3 +31,7 @@ Cargo.lock
 # Node.js
 node_modules/
 dist/
+
+# git worktrees (isolated workspaces)
+.worktrees/
+
