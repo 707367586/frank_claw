@@ -1,0 +1,25 @@
+.ui-tabs { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.ui-tabs__list {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--sidebar-accent);
+  border-radius: var(--radius-pill);
+  align-self: flex-start;
+}
+.ui-tabs__trigger {
+  padding: 6px 16px;
+  border-radius: var(--radius-pill);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 120ms, color 120ms;
+}
+.ui-tabs__trigger:hover { color: var(--foreground); }
+.ui-tabs__trigger.is-active {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+}
+.ui-tabs__content { flex: 1; min-height: 0; }
