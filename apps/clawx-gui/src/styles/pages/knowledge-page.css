@@ -1,0 +1,25 @@
+.knowledge-page { display: grid; grid-template-columns: 360px 1fr; gap: 16px; padding: 20px 24px; height: 100%; overflow: hidden; }
+.knowledge-page__left { overflow: auto; }
+.knowledge-page__right { overflow: auto; }
+
+.kn-list { display: flex; flex-direction: column; gap: 16px; }
+.kn-list__head { display: flex; align-items: center; justify-content: space-between; }
+.kn-list__head h2 { font-size: 18px; font-weight: 700; }
+.kn-list__group { font-size: 12px; color: var(--muted-foreground); margin-bottom: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.02em; }
+
+.kn-src { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); margin-bottom: 8px; }
+.kn-src__icon { width: 32px; height: 32px; border-radius: 8px; background: var(--sidebar-accent); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; }
+.kn-src__body { flex: 1; min-width: 0; }
+.kn-src__name { font-size: 13px; font-weight: 600; }
+.kn-src__meta { font-size: 11px; color: var(--muted-foreground); margin: 2px 0 4px; }
+
+.kn-search { display: flex; flex-direction: column; gap: 16px; }
+.kn-search__results { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.kn-search__item { padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.kn-search__item-head { display: flex; align-items: center; justify-content: space-between; }
+.kn-search__title { font-size: 13px; font-weight: 600; }
+.kn-search__view { font-size: 11px; color: var(--primary); cursor: pointer; }
+.kn-search__excerpt { margin-top: 6px; font-size: 12.5px; color: var(--muted-foreground); line-height: 1.5; }
+.kn-search__source { display: inline-block; margin-top: 8px; font-size: 11px; color: var(--muted-foreground); padding: 2px 8px; background: var(--sidebar-accent); border-radius: 999px; }
+.kn-search__drop { border: 1px dashed var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted-foreground); font-size: 12px; }
+.kn-search__drop p { font-size: 13px; color: var(--foreground); }
