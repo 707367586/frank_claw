@@ -1,0 +1,11 @@
+.ui-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+}
+.ui-card__header { padding: 16px 20px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ui-card__title { font-size: 15px; font-weight: 600; color: var(--card-foreground); margin: 0; }
+.ui-card__content { padding: 0 20px 16px; flex: 1; }
+.ui-card__footer { padding: 12px 20px 16px; display: flex; align-items: center; gap: 8px; }
