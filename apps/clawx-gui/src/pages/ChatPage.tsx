@@ -14,6 +14,7 @@ import ChatWelcome from "../components/ChatWelcome";
 import EmptyState from "../components/EmptyState";
 import SourceReferences from "../components/SourceReferences";
 import ArtifactsPanel from "../components/ArtifactsPanel";
+import { TabsRoot, TabsList, TabsTrigger, TabsContent } from "../components/ui/Tabs";
 
 export default function ChatPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -269,74 +270,61 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="chat-view">
-      {/* Top bar with tabs */}
-      <div className="chat-top-bar">
-        <div className="chat-tabs">
-          <button
-            className={`chat-tab ${activeTab === "conversation" ? "active" : ""}`}
-            onClick={() => setActiveTab("conversation")}
-          >
-            Conversation
-          </button>
-          <button
-            className={`chat-tab ${activeTab === "artifacts" ? "active" : ""}`}
-            onClick={() => setActiveTab("artifacts")}
-          >
-            Artifacts
-          </button>
-        </div>
-      </div>
+    <div className="chat-page">
+      <TabsRoot value={activeTab} onChange={(v) => setActiveTab(v as "conversation" | "artifacts")}>
+        <header className="chat-page__head">
+          <TabsList>
+            <TabsTrigger value="conversation">对话</TabsTrigger>
+            <TabsTrigger value="artifacts">产物</TabsTrigger>
+          </TabsList>
+        </header>
 
-      {/* Content area */}
-      {activeTab === "conversation" ? (
-        <div className="chat-content-area">
-          {/* Messages */}
-          <div className="chat-messages-col">
-            <div className="messages">
-              {loading && (
-                <p className="list-placeholder">Loading messages...</p>
-              )}
-              {error && <p className="list-placeholder">{error}</p>}
-              {!loading &&
-                !error &&
-                messages.map((msg) => (
-                  <MessageBubble key={msg.id} message={msg} />
-                ))}
-              {/* Streaming assistant message */}
-              {isStreaming && streamingContent && (
-                <MessageBubble
-                  message={{
-                    id: "streaming",
-                    conversation_id: convId,
-                    role: "assistant",
-                    content: streamingContent,
-                    created_at: new Date().toISOString(),
-                  }}
-                />
-              )}
-              {isStreaming && !streamingContent && (
-                <div className="message assistant">
-                  <div className="typing-indicator">
-                    <span />
-                    <span />
-                    <span />
+        <TabsContent value="conversation">
+          <div className="chat-page__body">
+            {loading && <p className="chat-page__placeholder">加载中…</p>}
+            {error && <p className="chat-page__placeholder">{error}</p>}
+            {!loading && !error && (
+              <div className="chat-page__stream">
+                {messages.map((m) => (
+                  <div key={m.id}>
+                    <MessageBubble message={m} />
+                    <SourceReferences refs={m.refs ?? []} />
                   </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input */}
-            <ChatInput onSend={handleSend} disabled={isStreaming} />
+                ))}
+                {isStreaming && streamingContent && (
+                  <MessageBubble
+                    message={{
+                      id: "streaming",
+                      conversation_id: convId!,
+                      role: "assistant",
+                      content: streamingContent,
+                      created_at: new Date().toISOString(),
+                    }}
+                  />
+                )}
+                {isStreaming && !streamingContent && (
+                  <div className="msg msg--assistant">
+                    <div className="msg__bubble">
+                      <span className="typing-indicator"><span /><span /><span /></span>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
           </div>
+        </TabsContent>
 
-          {/* Source References panel */}
-          <SourceReferences refs={[]} />
-        </div>
-      ) : (
-        <ArtifactsPanel />
-      )}
+        <TabsContent value="artifacts">
+          <div className="chat-page__body">
+            <ArtifactsPanel conversationId={convId ?? undefined} />
+          </div>
+        </TabsContent>
+
+        <footer className="chat-page__foot">
+          <ChatInput onSend={handleSend} disabled={isStreaming || loading} />
+        </footer>
+      </TabsRoot>
     </div>
   );
 }
