@@ -1,104 +1,93 @@
 import { useState, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, Plus, Menu, ChevronDown } from "lucide-react";
-import { STATUS_COLORS } from "../lib/constants";
+import Input from "./ui/Input";
+import IconButton from "./ui/IconButton";
+import Avatar from "./ui/Avatar";
+import AgentTemplateModal from "./AgentTemplateModal";
 import { useAgents } from "../lib/store";
 import type { Agent } from "../lib/types";
 
-function getStatusDetail(agent: Agent): string {
-  switch (agent.status) {
-    case "working": return "Running · 3 running";
-    case "idle": return "Idle";
-    case "error": return "Error";
-    case "offline": return "Offline";
-    default: return agent.status;
-  }
+const STATUS_DESC: Record<Agent["status"], string> = {
+  working:  "Running · 2 pending",
+  idle:     "Idle",
+  error:    "Error",
+  offline:  "Offline",
+};
+
+const EMOJI: Record<string, string> = {
+  dev: "💻", research: "🔍", writing: "✍️", data: "📊",
+};
+
+function pickEmoji(agent: Agent): string {
+  const key = (agent.role ?? "").toLowerCase();
+  if (key.includes("code") || key.includes("dev")) return EMOJI.dev;
+  if (key.includes("research")) return EMOJI.research;
+  if (key.includes("writ")) return EMOJI.writing;
+  if (key.includes("data")) return EMOJI.data;
+  return agent.name.slice(0, 1);
 }
 
 export default function AgentSidebar() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get("agent");
-
   const { agents, loading, error } = useAgents();
   const [search, setSearch] = useState("");
+  const [openNew, setOpenNew] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    if (!q) return agents;
-    return agents.filter(
-      (a) =>
-        a.name.toLowerCase().includes(q) || a.role.toLowerCase().includes(q),
-    );
+    return !q ? agents : agents.filter((a) => a.name.toLowerCase().includes(q) || (a.role ?? "").toLowerCase().includes(q));
   }, [agents, search]);
 
-  const handleSelect = useCallback(
-    (id: string) => {
-      const params = new URLSearchParams(searchParams);
-      params.set("agent", id);
-      setSearchParams(params);
-    },
-    [searchParams, setSearchParams],
-  );
+  const handleSelect = useCallback((id: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("agent", id);
+    setSearchParams(params);
+  }, [searchParams, setSearchParams]);
 
   return (
     <aside className="agent-sidebar">
-      {/* Header */}
-      <div className="sidebar-header">
-        <Menu size={20} className="sidebar-menu-icon" />
-        <div className="sidebar-brand">
-          <span className="sidebar-brand-name">ZettClaw</span>
-          <ChevronDown size={14} className="sidebar-brand-chevron" />
+      <header className="agent-sidebar__head">
+        <div className="agent-sidebar__brand">
+          <span className="agent-sidebar__brand-name">ZettClaw</span>
+          <ChevronDown size={14} />
         </div>
+        <IconButton icon={<Menu size={16} />} aria-label="菜单" variant="ghost" size="sm" />
+      </header>
+
+      <div className="agent-sidebar__search">
+        <Input
+          size="sm"
+          leftIcon={<Search size={14} />}
+          placeholder="搜索 Agent..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <IconButton icon={<Plus size={14} />} aria-label="新建 Agent" variant="default" size="sm" onClick={() => setOpenNew(true)} />
       </div>
 
-      {/* Search + Add */}
-      <div className="sidebar-actions">
-        <div className="sidebar-search">
-          <Search size={14} className="sidebar-search-icon" />
-          <input
-            type="text"
-            className="sidebar-search-input"
-            aria-label="Search agents"
-            placeholder="Search agents..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <button className="sidebar-add-btn" aria-label="Add agent">
-          <Plus size={16} />
-        </button>
-      </div>
-
-      {/* Agent list */}
-      <div className="sidebar-agent-list">
-        {loading && <p className="sidebar-placeholder">Loading...</p>}
-        {error && <p className="sidebar-placeholder">{error}</p>}
+      <div className="agent-sidebar__list">
+        {loading && <p className="agent-sidebar__placeholder">加载中...</p>}
+        {error && <p className="agent-sidebar__placeholder">{error}</p>}
         {!loading && !error && filtered.length === 0 && (
-          <p className="sidebar-placeholder">
-            {search ? "No matches" : "No agents yet"}
-          </p>
+          <p className="agent-sidebar__placeholder">{search ? "无匹配" : "暂无 Agent"}</p>
         )}
         {filtered.map((agent) => (
           <button
             key={agent.id}
-            className={`sidebar-agent-item ${selectedId === agent.id ? "selected" : ""}`}
+            className={`agent-item ${selectedId === agent.id ? "is-active" : ""}`}
             onClick={() => handleSelect(agent.id)}
-            aria-label={`Select agent ${agent.name}`}
           >
-            <span
-              className="sidebar-agent-dot"
-              style={{ background: STATUS_COLORS[agent.status] }}
-            />
-            <div className="sidebar-agent-info">
-              <span className="sidebar-agent-name">{agent.name}</span>
-              <span className="sidebar-agent-status">{getStatusDetail(agent)}</span>
+            <Avatar size={40} rounded="md" bg="var(--primary)">{pickEmoji(agent)}</Avatar>
+            <div className="agent-item__text">
+              <span className="agent-item__name">{agent.name}</span>
+              <span className="agent-item__status">{STATUS_DESC[agent.status]}</span>
             </div>
           </button>
         ))}
       </div>
-
-      {/* Bottom divider */}
-      <div className="sidebar-divider" />
+      <AgentTemplateModal open={openNew} onClose={() => setOpenNew(false)} />
     </aside>
   );
 }

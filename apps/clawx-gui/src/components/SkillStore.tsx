@@ -1,131 +1,31 @@
-import { useState, useMemo } from "react";
+import { Wrench, Braces, Mic, PenTool, FileSearch, Languages } from "lucide-react";
+import Badge from "./ui/Badge";
+import Button from "./ui/Button";
 
-interface Skill {
-  id: string;
-  name: string;
-  description: string;
-  status: "installed" | "review" | "available";
-}
-
-interface SkillCategory {
-  name: string;
-  skills: Skill[];
-}
-
-const MOCK_DATA: SkillCategory[] = [
-  {
-    name: "推荐",
-    skills: [
-      { id: "web-search", name: "Web Search", description: "互联网搜索和信息获取", status: "installed" },
-      { id: "image-gen", name: "Image Gen", description: "图片生成 AI 绘图", status: "installed" },
-      { id: "pdf-reader-rec", name: "PDF Reader", description: "解析 PDF 内容并提取信息", status: "available" },
-    ],
-  },
-  {
-    name: "信息获取",
-    skills: [
-      { id: "web-search-2", name: "Web Search", description: "互联网搜索和信息获取", status: "installed" },
-      { id: "pdf-reader", name: "PDF Reader", description: "解析 PDF 内容并提取信息", status: "available" },
-      { id: "youtube-summary", name: "YouTube Summary", description: "YouTube 视频内容总结", status: "available" },
-    ],
-  },
+const SKILLS = [
+  { id: "1", icon: Braces,     name: "代码生成", desc: "根据需求自动生成高质量的代码，支持多种编程语言。", enabled: true,  uses: 136, ts: "3 小时前" },
+  { id: "2", icon: FileSearch, name: "数据分析", desc: "处理和分析大规模数据集，提供可视化洞察。",       enabled: true,  uses: 203, ts: "2 小时前" },
+  { id: "3", icon: Mic,        name: "语音识别", desc: "将音频内容转换为文字，支持多种语言识别。",       enabled: false, uses: 194, ts: "昨天" },
+  { id: "4", icon: PenTool,    name: "文档撰写", desc: "自动生成结构化文档、报告和技术说明。",          enabled: true,  uses: 120, ts: "4 小时前" },
+  { id: "5", icon: Languages,  name: "智能翻译", desc: "支持多语言互译，保持原文语境和风格。",          enabled: true,  uses: 87,  ts: "1 天前" },
+  { id: "6", icon: Wrench,     name: "摘要总结", desc: "快速提取长文本主要内容，生成精炼摘要。",         enabled: true,  uses: 148, ts: "6 小时前" },
 ];
 
-function getIconColor(name: string): string {
-  const colors = [
-    "#7C5CFC", "#3B82F6", "#22C55E", "#F59E0B",
-    "#EF4444", "#EC4899", "#8B5CF6", "#06B6D4",
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return colors[Math.abs(hash) % colors.length];
-}
-
 export default function SkillStore() {
-  const [search, setSearch] = useState("");
-  const [localStatuses, setLocalStatuses] = useState<Record<string, Skill["status"]>>({});
-
-  const filteredCategories = useMemo(() => {
-    const q = search.toLowerCase();
-    if (!q) return MOCK_DATA;
-    return MOCK_DATA
-      .map((cat) => ({
-        ...cat,
-        skills: cat.skills.filter((s) => s.name.toLowerCase().includes(q)),
-      }))
-      .filter((cat) => cat.skills.length > 0);
-  }, [search]);
-
-  const getStatus = (skill: Skill): Skill["status"] => {
-    return localStatuses[skill.id] ?? skill.status;
-  };
-
-  const toggleInstall = (skill: Skill) => {
-    const current = getStatus(skill);
-    setLocalStatuses((prev) => ({
-      ...prev,
-      [skill.id]: current === "installed" ? "available" : "installed",
-    }));
-  };
-
   return (
-    <div className="skill-store">
-      <input
-        type="text"
-        className="form-input skill-store-search"
-        placeholder="搜索 Skill..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-
-      {filteredCategories.length === 0 && (
-        <div className="empty-state">
-          <p>没有匹配的 Skill</p>
-        </div>
-      )}
-
-      {filteredCategories.map((category) => (
-        <div key={category.name} className="skill-category">
-          <h3 className="skill-category-header">{category.name}</h3>
-          <div className="skill-category-list">
-            {category.skills.map((skill) => {
-              const status = getStatus(skill);
-              const iconColor = getIconColor(skill.name);
-              const initial = skill.name.charAt(0).toUpperCase();
-
-              return (
-                <div key={skill.id} className="skill-item">
-                  <div className="skill-item-icon" style={{ background: iconColor }}>
-                    {initial}
-                  </div>
-                  <div className="skill-item-info">
-                    <span className="skill-item-name">{skill.name}</span>
-                    <span className="skill-item-desc">{skill.description}</span>
-                  </div>
-                  <div className="skill-item-action">
-                    {status === "installed" ? (
-                      <span
-                        className="skill-status skill-status-installed"
-                        onClick={() => toggleInstall(skill)}
-                      >
-                        已安装
-                      </span>
-                    ) : status === "review" ? (
-                      <span className="skill-status skill-status-review">审核</span>
-                    ) : (
-                      <button
-                        className="btn-primary skill-install-btn"
-                        onClick={() => toggleInstall(skill)}
-                      >
-                        安装
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+    <div className="skill-grid">
+      {SKILLS.map((s) => (
+        <div key={s.id} className="skill-card">
+          <div className="skill-card__head">
+            <div className="skill-card__icon"><s.icon size={16} /></div>
+            <span className="skill-card__name">{s.name}</span>
+            <Badge tone={s.enabled ? "success" : "neutral"}>{s.enabled ? "已启用" : "未启用"}</Badge>
+          </div>
+          <p className="skill-card__desc">{s.desc}</p>
+          <span className="skill-card__meta">调用 {s.uses} 次 · 最近使用 {s.ts}</span>
+          <div className="skill-card__actions">
+            <Button variant="default" size="sm">使用</Button>
+            <Button variant="outline" size="sm">编辑</Button>
           </div>
         </div>
       ))}

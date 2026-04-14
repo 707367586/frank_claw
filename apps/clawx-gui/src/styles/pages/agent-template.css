@@ -1,0 +1,22 @@
+.agent-template__head { margin-bottom: 16px; }
+.agent-template__head h2 { font-size: 18px; font-weight: 600; }
+.agent-template__head p { margin-top: 4px; font-size: 12px; color: var(--muted-foreground); }
+
+.agent-template__grid { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.tpl-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; width: 100%; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--foreground); text-align: left; transition: border-color 120ms, background 120ms; }
+.tpl-card:hover { border-color: var(--primary); }
+.tpl-card.is-active { background: color-mix(in srgb, var(--primary) 15%, var(--card)); border-color: var(--primary); }
+.tpl-card__icon { width: 28px; height: 28px; border-radius: 8px; background: var(--sidebar-accent); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; }
+.tpl-card__text { flex: 1; }
+.tpl-card__name { font-size: 14px; font-weight: 600; }
+.tpl-card__desc { font-size: 12px; color: var(--muted-foreground); margin-top: 2px; }
+
+.field { display: block; margin-top: 14px; }
+.field__label { display: block; font-size: 12px; color: var(--muted-foreground); margin-bottom: 6px; }
+.field .ui-input, .field .ui-select { width: 100%; }
+
+.agent-template__avatar { display: flex; align-items: center; gap: 16px; margin-top: 16px; padding: 12px; background: var(--sidebar-accent); border-radius: 12px; }
+.agent-template__avatar-slot { width: 48px; height: 48px; border-radius: 12px; background: var(--primary); color: var(--primary-foreground); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 16px; }
+.agent-template__avatar-meta { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--muted-foreground); }
+
+.agent-template__foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }

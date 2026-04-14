@@ -1,0 +1,45 @@
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 120ms, color 120ms, opacity 120ms;
+}
+.ui-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.ui-btn--sm { height: 28px; padding: 0 12px; font-size: 12px; }
+.ui-btn--md { height: 36px; padding: 0 16px; font-size: 14px; }
+.ui-btn--lg { height: 44px; padding: 0 20px; font-size: 15px; }
+
+.ui-btn--default     { background: var(--primary); color: var(--primary-foreground); }
+.ui-btn--default:hover:not(:disabled)   { background: color-mix(in srgb, var(--primary) 90%, white); }
+.ui-btn--secondary   { background: var(--secondary); color: var(--secondary-foreground); }
+.ui-btn--secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--secondary) 85%, white); }
+.ui-btn--destructive { background: var(--destructive); color: var(--destructive-foreground); }
+.ui-btn--outline     { background: transparent; color: var(--foreground); border: 1px solid var(--border); }
+.ui-btn--outline:hover:not(:disabled) { background: var(--sidebar-accent); }
+.ui-btn--ghost       { background: transparent; color: var(--foreground); }
+.ui-btn--ghost:hover:not(:disabled) { background: var(--sidebar-accent); }
+
+.ui-btn__icon { display: inline-flex; }
+
+.ui-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  transition: background 120ms;
+}
+.ui-icon-btn--sm { width: 28px; height: 28px; }
+.ui-icon-btn--md { width: 36px; height: 36px; }
+.ui-icon-btn--lg { width: 44px; height: 44px; }
+
+.ui-icon-btn--ghost { background: transparent; color: var(--sidebar-foreground); }
+.ui-icon-btn--ghost:hover { background: var(--sidebar-accent); color: var(--foreground); }
+.ui-icon-btn--default { background: var(--primary); color: var(--primary-foreground); }
+.ui-icon-btn--secondary { background: var(--secondary); color: var(--secondary-foreground); }
+.ui-icon-btn--outline { background: transparent; color: var(--foreground); border: 1px solid var(--border); }
+.ui-icon-btn--destructive { background: var(--destructive); color: var(--destructive-foreground); }

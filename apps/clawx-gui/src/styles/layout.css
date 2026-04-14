@@ -1,0 +1,21 @@
+/* ---- B Column: Agent Sidebar ---- */
+
+.agent-sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: var(--sidebar);
+  border-right: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.list-placeholder {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 0;
+}
+
+

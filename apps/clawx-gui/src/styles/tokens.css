@@ -1,0 +1,90 @@
+:root {
+  /* Layout */
+  --nav-width: 56px;
+  --sidebar-width: 280px;
+
+  /* Pencil Dark Theme Tokens */
+  --background: #131124;
+  --foreground: #E8E8EA;
+  --card: #1A182E;
+  --card-foreground: #FFFFFF;
+  --primary: #5749F4;
+  --primary-foreground: #FFFFFF;
+  --secondary: #403F51;
+  --secondary-foreground: #FFFFFF;
+  --accent: #131124;
+  --accent-foreground: #F2F3F0;
+  --muted-foreground: #888799;
+  --destructive: #CC3314;
+  --destructive-foreground: #FFFFFF;
+  --border: #2B283D;
+  --input: #2B283D;
+  --ring: #666666;
+
+  /* Sidebar */
+  --sidebar: #1A182E;
+  --sidebar-foreground: #ACABB2;
+  --sidebar-accent: #2B283D;
+  --sidebar-accent-foreground: #E8E8EA;
+  --sidebar-border: #2B283D;
+  --sidebar-primary: #0F5FFE;
+  --sidebar-primary-foreground: #E8E8EA;
+
+  /* Status colors */
+  --success: #22C55E;
+  --error: #EF4444;
+  --warning: #F59E0B;
+  --info: #3B82F6;
+
+  /* Typography */
+  --font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+
+  /* Border radius */
+  --radius-xs: 6px;
+  --radius-s: 4px;
+  /* NOTE: --radius-m is kept at 8px for component conventions (cards, chips).
+     The Pencil halo system defines radius-m at 24px; that value is exposed as
+     --radius-m-pencil for the few places that need the larger pill-style radius. */
+  --radius-m: 8px;
+  --radius-l: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 9999px;
+
+  /* Pencil halo extras */
+  --muted: #2E2E2E;
+  --tile: #1A182E;
+
+  --color-error:            #53424F;
+  --color-error-foreground: #FFBFB2;
+  --color-warning:          #53484F;
+  --color-warning-foreground:#FFD9B2;
+  --color-success:          #3B4748;
+  --color-success-foreground:#A1E5A1;
+  --color-info:             #404562;
+  --color-info-foreground:  #B2CCFF;
+
+  --radius-m-pencil: 24px;
+  --radius-l-pencil: 40px;
+  --radius-card:     8px;
+  --radius-card-lg:  12px;
+
+  --shadow-sm: 0 2px 3.5px -1px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 5.25px     rgba(0,0,0,0.10);
+  --shadow-lg: 0 8px 8.75px     rgba(0,0,0,0.15);
+
+  --white: #FFFFFF;
+}

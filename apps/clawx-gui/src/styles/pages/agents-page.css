@@ -1,0 +1,13 @@
+.agents-page { padding: 20px 28px; height: 100%; display: flex; flex-direction: column; gap: 16px; }
+.agents-page__head { display: flex; align-items: center; gap: 12px; }
+.agents-page__head-right { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+.agents-page__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-content: start; overflow: auto; padding-bottom: 16px; }
+
+.agent-grid-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.agent-grid-card__head { display: flex; align-items: center; gap: 10px; }
+.agent-grid-card__name-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.agent-grid-card__name { font-size: 14px; font-weight: 600; color: var(--card-foreground); }
+.agent-grid-card__model { font-size: 11px; color: var(--muted-foreground); margin-top: 2px; }
+.agent-grid-card__meta { font-size: 11.5px; color: var(--muted-foreground); }
+.agent-grid-card__actions { display: flex; gap: 8px; }
+.agent-grid-card__actions .ui-btn { flex: 1; }

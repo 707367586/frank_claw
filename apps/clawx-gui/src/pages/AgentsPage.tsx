@@ -1,142 +1,55 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { LayoutGrid, Plus, Search } from "lucide-react";
-import { useAgents } from "../lib/store";
-import type { Agent } from "../lib/types";
-import type { AgentTemplate } from "../lib/agentTemplates";
-import AgentCard from "../components/AgentCard";
-import AgentForm from "../components/AgentForm";
+import { useNavigate } from "react-router-dom";
+import { Plus, Search } from "lucide-react";
+import { TabsRoot, TabsList, TabsTrigger, TabsContent } from "../components/ui/Tabs";
+import Input from "../components/ui/Input";
+import Button from "../components/ui/Button";
+import AgentGridCard from "../components/AgentGridCard";
 import SkillStore from "../components/SkillStore";
-
-type PageTab = "agents" | "skills";
+import AgentTemplateModal from "../components/AgentTemplateModal";
+import { useAgents } from "../lib/store";
 
 export default function AgentsPage() {
-  const [, setSearchParams] = useSearchParams();
+  const { agents } = useAgents();
+  const navigate = useNavigate();
+  const [tab, setTab] = useState("agent");
+  const [query, setQuery] = useState("");
+  const [openNew, setOpenNew] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<PageTab>("agents");
-  const { agents, loading, refresh } = useAgents();
-  const [search, setSearch] = useState("");
-
-  // Form modal state
-  const [showForm, setShowForm] = useState(false);
-  const [editAgent, setEditAgent] = useState<Agent | null>(null);
-  const [formTemplate, setFormTemplate] = useState<AgentTemplate | null>(null);
-
-  const filteredAgents = agents.filter(
-    (a) =>
-      a.name.toLowerCase().includes(search.toLowerCase()) ||
-      a.role.toLowerCase().includes(search.toLowerCase()),
-  );
-
-  const handleEnter = (agent: Agent) => {
-    setSearchParams({ agent: agent.id });
-    window.location.href = `/?agent=${agent.id}`;
-  };
-
-  const handleEdit = (agent: Agent) => {
-    setEditAgent(agent);
-    setFormTemplate(null);
-    setShowForm(true);
-  };
-
-  const handleCreate = () => {
-    setEditAgent(null);
-    setFormTemplate(null);
-    setShowForm(true);
-  };
-
-  const handleFormSaved = () => {
-    setShowForm(false);
-    setEditAgent(null);
-    setFormTemplate(null);
-    refresh();
-  };
-
-  const handleFormCancel = () => {
-    setShowForm(false);
-    setEditAgent(null);
-    setFormTemplate(null);
-  };
+  const filtered = agents.filter((a) => a.name.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div className="agents-page">
-      {/* Top bar */}
-      <div className="page-top-bar">
-        <div className="page-top-bar-left">
-          <LayoutGrid size={20} />
-          <h2>Agent & Skill</h2>
-          <div className="page-tabs">
-            <button
-              className={`page-tab ${activeTab === "agents" ? "active" : ""}`}
-              onClick={() => setActiveTab("agents")}
-            >
-              Agent
-            </button>
-            <button
-              className={`page-tab ${activeTab === "skills" ? "active" : ""}`}
-              onClick={() => setActiveTab("skills")}
-            >
-              Skill
-            </button>
+      <TabsRoot value={tab} onChange={setTab}>
+        <header className="agents-page__head">
+          <TabsList>
+            <TabsTrigger value="agent">Agent</TabsTrigger>
+            <TabsTrigger value="skill">Skill</TabsTrigger>
+          </TabsList>
+          <div className="agents-page__head-right">
+            <Input size="sm" leftIcon={<Search size={14} />} placeholder="搜索 Agent..." value={query} onChange={(e) => setQuery(e.target.value)} />
+            <Button leftIcon={<Plus size={14} />} size="sm" onClick={() => setOpenNew(true)}>新建 Agent</Button>
           </div>
-        </div>
-        <div className="page-top-bar-right">
-          <button className="btn-primary-pill" onClick={handleCreate}>
-            <Plus size={16} /> 新建 Agent
-          </button>
-          <div className="page-search-box">
-            <Search size={14} />
-            <input
-              placeholder="搜索 Agent..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        </header>
+
+        <TabsContent value="agent">
+          <div className="agents-page__grid">
+            {filtered.map((a) => (
+              <AgentGridCard
+                key={a.id}
+                agent={a}
+                onEnter={() => navigate(`/?agent=${a.id}`)}
+                onEdit={() => setOpenNew(true) /* TODO: open edit variant of AgentTemplateModal */}
+              />
+            ))}
           </div>
-        </div>
-      </div>
-
-      {/* Agent tab */}
-      {activeTab === "agents" && (
-        <>
-          {loading ? (
-            <div className="empty-state">
-              <p>加载中...</p>
-            </div>
-          ) : filteredAgents.length === 0 ? (
-            <div className="empty-state">
-              <p>{search ? "没有匹配的 Agent" : "还没有 Agent，点击上方按钮创建"}</p>
-            </div>
-          ) : (
-            <div className="agents-grid">
-              {filteredAgents.map((agent) => (
-                <AgentCard
-                  key={agent.id}
-                  agent={agent}
-                  onEnter={handleEnter}
-                  onEdit={handleEdit}
-                />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Skill tab */}
-      {activeTab === "skills" && (
-        <div className="tab-content">
+        </TabsContent>
+        <TabsContent value="skill">
           <SkillStore />
-        </div>
-      )}
+        </TabsContent>
+      </TabsRoot>
 
-      {/* Agent Form Modal */}
-      {showForm && (
-        <AgentForm
-          agent={editAgent}
-          initialTemplate={formTemplate}
-          onSaved={handleFormSaved}
-          onCancel={handleFormCancel}
-        />
-      )}
+      <AgentTemplateModal open={openNew} onClose={() => setOpenNew(false)} />
     </div>
   );
 }

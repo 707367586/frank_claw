@@ -6,6 +6,7 @@ import TasksPage from "./pages/TasksPage";
 import ConnectorsPage from "./pages/ConnectorsPage";
 import SettingsPage from "./pages/SettingsPage";
 import AgentsPage from "./pages/AgentsPage";
+import ContactsPage from "./pages/ContactsPage";
 
 const router = createBrowserRouter([
   {
@@ -18,6 +19,7 @@ const router = createBrowserRouter([
       { path: "connectors", element: <ConnectorsPage /> },
       { path: "agents", element: <AgentsPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "contacts", element: <ContactsPage /> },
     ],
   },
 ]);

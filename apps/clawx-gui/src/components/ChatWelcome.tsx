@@ -1,91 +1,45 @@
-import { Bot } from "lucide-react";
-import ChatInput from "./ChatInput";
+import { Sparkles, MessageSquare, FileText, Code, Search, ChevronRight } from "lucide-react";
+import type { Agent } from "../lib/types";
 
-interface ChatWelcomeProps {
-  agent: { id: string; name: string; role: string };
-  onSend: (text: string) => void;
-}
+const TAGS = ["对话", "文件创建", "代码编写", "分析研究", "总结", "文献检索", "任务规划", "代码审查"];
 
-const QUICK_TAGS = [
-  "问答", "总结提炼", "代码辅助", "科研", "知识", "任务助手", "内容创作", "性能优化",
+const SUGGESTIONS = [
+  { icon: MessageSquare, text: "智能分析业务流程并提出建议" },
+  { icon: FileText,      text: "快速生成高质量技术文档" },
+  { icon: Code,          text: "为移动端设计一个技术方案" },
+  { icon: Search,        text: "研究并汇总行业最新动态" },
 ];
 
-const SUGGESTIONS_BY_ROLE: Record<string, string[]> = {
-  developer: [
-    "帮我分析这段代码的性能问题",
-    "写一个 REST API 的单元测试",
-    "帮我重构这个函数，提升可读性",
-  ],
-  researcher: [
-    "帮我总结这篇论文的核心观点",
-    "对比分析这两种技术方案的优劣",
-    "帮我梳理这个领域的研究现状",
-  ],
-  writer: [
-    "帮我润色这段文字",
-    "根据大纲生成一篇技术博客",
-    "帮我写一份项目周报",
-  ],
-  default: [
-    "帮我分析这段代码的性能问题",
-    "总结一下今天的工作进展",
-    "帮我梳理一个技术方案",
-  ],
-};
-
-function getSuggestions(role: string): string[] {
-  const key = role.toLowerCase();
-  for (const [k, v] of Object.entries(SUGGESTIONS_BY_ROLE)) {
-    if (key.includes(k)) return v;
-  }
-  return SUGGESTIONS_BY_ROLE.default;
-}
-
-export default function ChatWelcome({ agent, onSend }: ChatWelcomeProps) {
-  const suggestions = getSuggestions(agent.role);
+export default function ChatWelcome({ agent: _agent, onSend }: { agent?: Agent; onSend?: (t: string) => void | Promise<void> }) {
+  const handleSuggest = async (text: string) => {
+    if (onSend) {
+      await onSend(text);
+    }
+  };
 
   return (
     <div className="chat-welcome">
-      {/* Top bar with tabs */}
-      <div className="chat-top-bar">
-        <div className="chat-tabs">
-          <button className="chat-tab active">Conversation</button>
-          <button className="chat-tab">Artifacts</button>
-        </div>
-      </div>
-
-      {/* Center content */}
-      <div className="chat-welcome-center">
-        <div className="chat-welcome-icon">
-          <Bot size={32} />
-        </div>
-        <h1 className="chat-welcome-name">{agent.name}</h1>
-        <p className="chat-welcome-desc">
-          Your intelligent AI assistant for coding, research, and creative tasks. Ask me anything or try one of the suggestions below.
+      <div className="chat-welcome__hero">
+        <div className="chat-welcome__icon"><Sparkles size={30} /></div>
+        <h1 className="chat-welcome__title">MaxClaw</h1>
+        <p className="chat-welcome__subtitle">
+          您的智能 AI 助手，擅长编程、研究和创意任务。随时提问或试试下方的建议。
         </p>
-        <div className="chat-welcome-tags">
-          {QUICK_TAGS.map((tag) => (
-            <button key={tag} className="chat-welcome-tag" onClick={() => onSend(tag)}>
-              {tag}
-            </button>
-          ))}
-        </div>
-        <div className="chat-welcome-suggestions">
-          {suggestions.map((text) => (
-            <button
-              key={text}
-              className="chat-welcome-suggestion"
-              onClick={() => onSend(text)}
-            >
-              <span className="suggestion-checkbox">☐</span>
-              {text}
-            </button>
-          ))}
-        </div>
       </div>
-
-      {/* Input bar */}
-      <ChatInput onSend={onSend} />
+      <div className="chat-welcome__tags">
+        {TAGS.map((t) => <button key={t} className="chat-welcome__tag" onClick={() => handleSuggest(t)}>{t}</button>)}
+      </div>
+      <ul className="chat-welcome__suggestions">
+        {SUGGESTIONS.map((s) => (
+          <li key={s.text}>
+            <button className="chat-welcome__suggestion" onClick={() => handleSuggest(s.text)}>
+              <s.icon size={16} className="chat-welcome__suggestion-icon" />
+              <span>{s.text}</span>
+              <ChevronRight size={14} className="chat-welcome__suggestion-chevron" />
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
