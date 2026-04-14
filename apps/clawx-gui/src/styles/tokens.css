@@ -56,6 +56,9 @@
   /* Border radius */
   --radius-xs: 6px;
   --radius-s: 4px;
+  /* NOTE: --radius-m is kept at 8px for component conventions (cards, chips).
+     The Pencil halo system defines radius-m at 24px; that value is exposed as
+     --radius-m-pencil for the few places that need the larger pill-style radius. */
   --radius-m: 8px;
   --radius-l: 12px;
   --radius-xl: 16px;
