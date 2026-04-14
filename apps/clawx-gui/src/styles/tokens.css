@@ -82,4 +82,6 @@
   --shadow-sm: 0 2px 3.5px -1px rgba(0,0,0,0.06);
   --shadow-md: 0 4px 5.25px     rgba(0,0,0,0.10);
   --shadow-lg: 0 8px 8.75px     rgba(0,0,0,0.15);
+
+  --white: #FFFFFF;
 }
