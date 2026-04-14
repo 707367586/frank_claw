@@ -60,4 +60,26 @@
   --radius-l: 12px;
   --radius-xl: 16px;
   --radius-pill: 9999px;
+
+  /* Pencil halo extras */
+  --muted: #2E2E2E;
+  --tile: #1A182E;
+
+  --color-error:            #53424F;
+  --color-error-foreground: #FFBFB2;
+  --color-warning:          #53484F;
+  --color-warning-foreground:#FFD9B2;
+  --color-success:          #3B4748;
+  --color-success-foreground:#A1E5A1;
+  --color-info:             #404562;
+  --color-info-foreground:  #B2CCFF;
+
+  --radius-m-pencil: 24px;
+  --radius-l-pencil: 40px;
+  --radius-card:     8px;
+  --radius-card-lg:  12px;
+
+  --shadow-sm: 0 2px 3.5px -1px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 5.25px     rgba(0,0,0,0.10);
+  --shadow-lg: 0 8px 8.75px     rgba(0,0,0,0.15);
 }
