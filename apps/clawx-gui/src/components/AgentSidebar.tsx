@@ -4,6 +4,7 @@ import { Search, Plus, Menu, ChevronDown } from "lucide-react";
 import Input from "./ui/Input";
 import IconButton from "./ui/IconButton";
 import Avatar from "./ui/Avatar";
+import AgentTemplateModal from "./AgentTemplateModal";
 import { useAgents } from "../lib/store";
 import type { Agent } from "../lib/types";
 
@@ -32,6 +33,7 @@ export default function AgentSidebar() {
   const selectedId = searchParams.get("agent");
   const { agents, loading, error } = useAgents();
   const [search, setSearch] = useState("");
+  const [openNew, setOpenNew] = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -62,7 +64,7 @@ export default function AgentSidebar() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <IconButton icon={<Plus size={14} />} aria-label="新建 Agent" variant="default" size="sm" />
+        <IconButton icon={<Plus size={14} />} aria-label="新建 Agent" variant="default" size="sm" onClick={() => setOpenNew(true)} />
       </div>
 
       <div className="agent-sidebar__list">
@@ -85,6 +87,7 @@ export default function AgentSidebar() {
           </button>
         ))}
       </div>
+      <AgentTemplateModal open={openNew} onClose={() => setOpenNew(false)} />
     </aside>
   );
 }
