@@ -635,18 +635,6 @@ mod tests {
 
         // 3rd step should trigger limit
         assert_eq!(state.step_count(), 3);
-        // After 3 steps with max_steps=3, adding a step would violate
-        let step = ExecutionStep {
-            step_no: 4,
-            action: "step 4".into(),
-            tool: None,
-            evidence: None,
-            risk_reason: None,
-            result_summary: None,
-        };
-        // Actually the check happens ON record, so step 3 should trigger it
-        // Let me re-check: max_steps=3 means steps.len() >= 3 triggers
-        // After recording step 3, steps.len() == 3, so violation triggers
     }
 
     #[test]
@@ -845,7 +833,7 @@ mod tests {
     // TaskExecutor tests (Phase 4.3 & 5.2)
     // -----------------------------------------------------------------------
 
-    use super::{TaskExecutor, ToolAction, ToolExecutor, ToolResult, ExecutionSummary};
+    use super::{TaskExecutor, ToolAction, ToolExecutor, ToolResult};
     use clawx_types::ids::AgentId;
     use clawx_types::permission::{RiskLevel, PermissionDecision};
     use clawx_types::traits::{TaskRegistryPort, PermissionGatePort, RunUpdate};
@@ -868,11 +856,6 @@ mod tests {
                 default_risk: RiskLevel::Read,
                 risk_overrides: std::collections::HashMap::new(),
             }
-        }
-
-        fn with_risk(mut self, tool_name: &str, risk: RiskLevel) -> Self {
-            self.risk_overrides.insert(tool_name.to_string(), risk);
-            self
         }
     }
 
@@ -924,11 +907,6 @@ mod tests {
         fn always(decision: PermissionDecision) -> Self {
             Self { decision, per_risk: std::collections::HashMap::new() }
         }
-
-        fn with_override(mut self, risk: RiskLevel, decision: PermissionDecision) -> Self {
-            self.per_risk.insert(format!("{:?}", risk), decision);
-            self
-        }
     }
 
     #[async_trait::async_trait]
@@ -974,7 +952,6 @@ mod tests {
 
     #[derive(Debug, Clone)]
     struct RunUpdateRecord {
-        run_id: RunId,
         update: RunUpdate,
     }
 
@@ -1039,8 +1016,8 @@ mod tests {
         async fn list_runs(&self, _task_id: clawx_types::TaskId, _pagination: clawx_types::Pagination) -> clawx_types::error::Result<clawx_types::PagedResult<clawx_types::autonomy::Run>> {
             Ok(clawx_types::PagedResult { items: vec![], total: 0, page: 1, per_page: 20 })
         }
-        async fn update_run(&self, id: RunId, update: RunUpdate) -> clawx_types::error::Result<()> {
-            self.updates.lock().unwrap().push(RunUpdateRecord { run_id: id, update });
+        async fn update_run(&self, _id: RunId, update: RunUpdate) -> clawx_types::error::Result<()> {
+            self.updates.lock().unwrap().push(RunUpdateRecord { update });
             Ok(())
         }
         async fn get_incomplete_runs(&self) -> clawx_types::error::Result<Vec<clawx_types::autonomy::Run>> {

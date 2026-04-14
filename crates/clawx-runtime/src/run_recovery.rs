@@ -134,7 +134,6 @@ mod tests {
     use super::*;
     use crate::db::Database;
     use crate::task_repo::SqliteTaskRegistry;
-    use clawx_types::autonomy::*;
     use clawx_types::ids::{AgentId, TaskId};
     use clawx_types::traits::TaskRegistryPort;
     use chrono::Utc;

@@ -1018,7 +1018,7 @@ async fn phase11_multi_step_execution_flow() {
 
 #[tokio::test]
 async fn phase11_run_recovery_orphaned_runs() {
-    use clawx_runtime::run_recovery::{recover_orphaned_runs, RecoveryReport, RunRecoveryConfig};
+    use clawx_runtime::run_recovery::{recover_orphaned_runs, RunRecoveryConfig};
     use clawx_runtime::task_repo::SqliteTaskRegistry;
     use clawx_types::autonomy::*;
     use clawx_types::traits::TaskRegistryPort;
@@ -1645,7 +1645,7 @@ async fn phase11_channel_routing_bound_to_agent() {
 #[tokio::test]
 async fn phase11_notification_repo_lifecycle() {
     use clawx_runtime::notification_repo::{
-        failed_notification, sent_notification, suppressed_notification, SqliteNotificationRepo,
+        sent_notification, suppressed_notification, SqliteNotificationRepo,
         negative_feedback_rate,
     };
     use clawx_types::autonomy::*;

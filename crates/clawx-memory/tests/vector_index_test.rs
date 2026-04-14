@@ -3,7 +3,6 @@
 //! Written test-first following TDD Red-Green-Refactor.
 
 use clawx_kb::qdrant::{QdrantStore, StubEmbeddingService};
-use clawx_kb::reciprocal_rank_fusion;
 use clawx_memory::vector_index::VectorMemoryIndex;
 
 fn make_index() -> VectorMemoryIndex {

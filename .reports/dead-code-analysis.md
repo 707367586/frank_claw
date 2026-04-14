@@ -1,100 +1,114 @@
 # Dead Code Analysis Report
 
-**Date:** 2026-04-13
-**Project:** ClawX (Rust workspace, 20 crates)
-**Baseline:** All tests pass, `cargo test --workspace` green
+**Date:** 2026-04-14
+**Project:** ClawX (Rust workspace, 16 crates + Tauri/React GUI)
+**Baseline:** `cargo test --workspace` green before and after; `pnpm build` green before and after.
+**Tooling:** `cargo check --workspace --all-targets`, `knip@6.4.1`, `ts-prune@0.10.3`, `depcheck`.
 
 ---
 
-## Summary
+## Summary of This Pass
 
-| Category | Count | Severity |
-|----------|-------|----------|
-| Stub crates (zero functionality) | 3 | SAFE |
-| Empty placeholder modules | 2 | SAFE |
-| Unused `clawx-hal` dependency refs | 3 crates | CAUTION |
-| Dead functions (compiler warning) | 2 | SAFE |
-| Suppressed `dead_code` warnings | 4 | OK (no action) |
-| Clippy style warnings | 16 | SAFE (auto-fixable) |
+| Category | Items | Action |
+|----------|-------|--------|
+| Rust unused imports | 5 | DELETED |
+| Rust dead test helpers | 2 methods + 1 field | DELETED |
+| Rust orphan WIP block | 1 | DELETED |
+| TS unused files | 6 | DELETED |
+| TS unused dependencies | 3 | REMOVED from package.json |
+| Rust placeholder crate (`clawx-ffi`) | 1 | FLAGGED (CAUTION) |
+| Rust orphan crate (`clawx-hal`) | 1 | FLAGGED (CAUTION) |
+| TS unused api.ts exports | 54 | FLAGGED (CAUTION) |
 
 ---
 
-## 1. SAFE: Stub Crates — No Implementation
+## 1. DELETED: Rust — unused imports (5)
 
-These 3 crates are workspace members with stub implementations only.
+| File | Import |
+|------|--------|
+| `crates/clawx-memory/tests/vector_index_test.rs:6` | `clawx_kb::reciprocal_rank_fusion` |
+| `crates/clawx-api/tests/integration_test.rs:1021` | `RecoveryReport` |
+| `crates/clawx-api/tests/integration_test.rs:1648` | `failed_notification` |
+| `crates/clawx-runtime/src/autonomy/executor.rs:848` | `ExecutionSummary` |
+| `crates/clawx-runtime/src/run_recovery.rs:137` | `clawx_types::autonomy::*` |
 
-| Crate | Content | Notes |
-|-------|---------|-------|
-| `clawx-skills` | `SkillRegistry { _private: () }` (10 lines) | No callers in workspace |
-| `clawx-artifact` | `ArtifactManager { _private: () }` (10 lines) | No callers in workspace |
-| `clawx-ota` | `OtaUpdater { _private: () }` (10 lines) | No callers in workspace |
+## 2. DELETED: Rust — dead test helpers in `executor.rs`
 
-**Note:** `clawx-ffi` is also a stub (`pub mod bridge;` + empty `bridge.rs`) but may be needed for future SwiftUI FFI bridge.
+| Location | Item | Notes |
+|----------|------|-------|
+| `StubToolExecutor::with_risk` | method (lines 873–877 pre-edit) | No callers anywhere |
+| `StubPermissionGate::with_override` | method (lines 928–931 pre-edit) | No callers anywhere |
+| `RunUpdateRecord::run_id` | field | Written at line 1043 but never read; all consumers access only `.update` |
+| `step_limit_exceeded` test body | orphan `let step = ExecutionStep {...}` + WIP comments | Redundant with `step_limit_triggers_at_max`; removed ≈ 12 lines |
 
-**Recommendation:** Remove `clawx-skills`, `clawx-artifact`, `clawx-ota` directories and entries from root `Cargo.toml`.
+## 3. DELETED: TS — unused files (6)
 
-## 2. SAFE: Empty Placeholder Modules
+| File | Reason |
+|------|--------|
+| `src/components/PermissionModal.tsx` | Orphan from commit `2ebc7ab` that removed the demo mount in AppLayout |
+| `src/components/ui/Card.tsx` | No importers |
+| `src/components/ui/Separator.tsx` | No importers |
+| `src/components/ui/Switch.tsx` | No importers |
+| `src/lib/agentTemplates.ts` | No importers |
+| `src/lib/constants.ts` | No importers (entire color palette never wired up) |
 
-Files containing only `//! Placeholder module.` (1 line each):
+## 4. REMOVED: TS — unused dependencies (3)
 
-| File | Parent `mod` declaration |
-|------|--------------------------|
-| `crates/clawx-vault/src/restore.rs` | `clawx-vault/src/lib.rs` |
-| `crates/clawx-memory/src/short_term.rs` | `clawx-memory/src/lib.rs` |
-| `crates/clawx-ffi/src/bridge.rs` | `clawx-ffi/src/lib.rs` |
+| Package | Scope |
+|---------|-------|
+| `@tauri-apps/api` | dependency — no `from '@tauri-apps/api'` anywhere in `src/` |
+| `dompurify` | dependency — sanitization handled by `react-markdown` |
+| `@types/dompurify` | devDependency — no longer needed |
 
-**Recommendation:** Delete `restore.rs` and `short_term.rs`, remove `pub mod` declarations from parent lib.rs files.
+`pnpm install` run; `pnpm-lock.yaml` regenerated.
 
-## 3. CAUTION: Unused `clawx-hal` Dependency
+---
 
-`clawx-hal` has real implementation (FsWatcher, KeychainStore), but is never `use`d in any .rs code:
+## 5. CAUTION — Not deleted, needs user decision
 
-| Cargo.toml | Status |
-|-----------|--------|
-| `apps/clawx-service/Cargo.toml` | Listed, never imported |
-| `crates/clawx-security/Cargo.toml` | Listed, never imported |
-| `crates/clawx-kb/Cargo.toml` | Listed, never imported |
+### `crates/clawx-ffi`
+- **Content:** `lib.rs` declaring `pub mod bridge;` + `bridge.rs` with a single `//! Placeholder module.` line.
+- **Callers:** Zero. Not listed as a dependency of any other crate or app.
+- **Comment in lib.rs:** "UniFFI bridge to Swift for ClawX" — forward-looking placeholder.
+- **Recommendation:** If the SwiftUI frontend has been dropped from the roadmap, delete the crate (remove `crates/clawx-ffi/` + workspace entries). If it's still planned, leave as-is and accept the cost of a compile unit with no code.
 
-**Recommendation:** Remove `clawx-hal` dependency from these 3 Cargo.toml files. Keep the `clawx-hal` crate itself.
+### `crates/clawx-hal`
+- **Content:** 260 lines — `FsWatcher` (fs_watcher.rs, 165 lines) + `KeychainStore` (keychain.rs, 84 lines).
+- **Callers:** Zero. Not listed in any Cargo.toml anywhere except its own.
+- **Note:** Unlike `clawx-ffi`, this crate has real implementation. Either it's premature (merge cost paid, usage deferred) or the calling site was removed and the crate was overlooked.
+- **Recommendation:** Check whether FsWatcher/KeychainStore are intended to be wired into `clawx-security` / `clawx-vault`. If yes, add the dep and `use` path. If no, delete the crate.
 
-## 4. SAFE: Dead Functions (Compiler Warning)
+### `apps/clawx-gui/src/lib/api.ts` — 54 unused exports
+- These look like a mostly-complete HTTP/Tauri client surface where only a subset of endpoints are currently wired into React views.
+- **Recommendation:** Do NOT delete unilaterally — they likely belong to planned but unfinished UI features (agents CRUD, channels, triggers, skills, feedback). A sweep is best done after a view-by-view audit.
 
-Functions flagged by `rustc` as never used (only called from `#[cfg(test)]`):
+---
 
-| Location | Function |
-|----------|----------|
-| `crates/clawx-api/src/routes/conversations.rs:192` | `execution_step_event()` |
-| `crates/clawx-api/src/routes/conversations.rs:200` | `confirmation_required_event()` |
-
-**Recommendation:** These are SSE event constructors intended for future Agent Loop integration. Either annotate with `#[allow(dead_code)]` or mark as `pub(crate)` if only used in tests.
-
-## 5. OK: Suppressed `dead_code` Warnings (No Action Needed)
+## 6. OK — Suppressed/required, no action needed
 
 | Location | Item | Reason |
 |----------|------|--------|
-| `clawx-llm/src/anthropic.rs:100` | `content_type` field | Required for serde deserialization |
-| `clawx-kb/src/embedding.rs:50` | `index` field | Required for serde deserialization |
-| `clawx-channel/src/lib.rs:208` | `channel_manager` field | Stored for future use in MessageRouter |
-| `clawx-api/src/routes/tasks.rs:123` | `TaskQuery` struct | Used for serde deserialization (fields accessed via Query extractor) |
-
-## 6. Clippy Warnings (Auto-fixable)
-
-| Crate | Count | Type |
-|-------|-------|------|
-| `clawx-types` | 6 | `derivable_impls` — manual Default impls that can be `#[derive(Default)]` |
-| `clawx-security` | 1 | `new_without_default` — `InMemorySecretStore::new()` needs Default impl |
-| `clawx-runtime` | 8 | Mixed: `match_like_matches_macro`, `collapsible_if`, `derivable_impls`, `field_reassign_with_default`, `redundant_closure`, `map_flatten` |
-| `clawx-service` | 1 | `needless_borrow` |
-
-**Recommendation:** Run `cargo clippy --fix --workspace` to auto-fix most of these.
+| `clawx-llm/src/anthropic.rs` | `content_type` field | serde deserialization |
+| `clawx-kb/src/embedding.rs` | `index` field | serde deserialization |
+| `clawx-channel/src/lib.rs` | `channel_manager` field | carries Arc for planned MessageRouter wiring |
+| `clawx-api/src/routes/tasks.rs` | `TaskQuery` struct | serde via axum Query extractor |
 
 ---
 
-## Resolved Since Last Report (2026-03-19)
+## 7. Resolved since 2026-04-13 report
 
 | Item | Status |
 |------|--------|
-| `clawx-scheduler` stub crate | Now has full implementation (TaskScheduler, cron, event triggers) |
-| `clawx-channel` stub crate | Now has full implementation (ChannelManager, adapters, MessageRouter) |
-| `prompt_defense.rs` empty module | Now has full implementation (PatternMatchGuard, ContentSanitizer) |
-| `read_token()` unused method | Now called from `apps/clawx-cli/src/main.rs:264` |
+| Stub crates `clawx-skills`, `clawx-artifact`, `clawx-ota` | Removed |
+| Placeholder `clawx-vault/src/restore.rs`, `clawx-memory/src/short_term.rs` | Removed |
+| Unused `clawx-hal` entries in `clawx-service` / `clawx-security` / `clawx-kb` Cargo.toml | Removed (crate is now fully orphan — see §5) |
+| Clippy style batches in `clawx-types` / `clawx-runtime` / `clawx-service` | Resolved (no warnings on current `cargo check`) |
+| SSE `execution_step_event` / `confirmation_required_event` dead-code warnings | No longer present on current tree |
+
+---
+
+## Verification
+
+- `cargo check --workspace --all-targets` — zero warnings after changes.
+- `cargo test --workspace --no-fail-fast` — all suites pass (same counts as baseline; no skipped/failing tests introduced).
+- `pnpm build` (in `apps/clawx-gui`) — vite build succeeds; bundle size unchanged gzip (157 kB).
