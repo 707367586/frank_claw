@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use clawx_types::error::{ClawxError, Result};
 use clawx_types::llm::*;
 use clawx_types::traits::LlmProvider;
-use futures::stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -214,20 +213,72 @@ impl LlmProvider for ZhipuProvider {
             )));
         }
 
-        // Simplified: read full body and emit as one chunk.
-        // Production would parse SSE data: lines incrementally.
-        let text = resp
-            .text()
-            .await
-            .map_err(|e| ClawxError::LlmProvider(format!("zhipu stream read error: {}", e)))?;
+        // Parse the SSE byte stream from ZhipuAI into LlmStreamChunks
+        let byte_stream = resp.bytes_stream();
 
-        let chunk = LlmStreamChunk {
-            delta: text,
-            stop_reason: Some(StopReason::EndTurn),
-            usage: None,
+        let chunk_stream = async_stream::stream! {
+            use futures::StreamExt;
+            let mut byte_stream = std::pin::pin!(byte_stream);
+            let mut buffer = String::new();
+
+            while let Some(bytes_result) = byte_stream.next().await {
+                let bytes = match bytes_result {
+                    Ok(b) => b,
+                    Err(e) => {
+                        yield Err(ClawxError::LlmProvider(format!("zhipu stream read error: {}", e)));
+                        return;
+                    }
+                };
+
+                buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+                // Process complete SSE lines
+                while let Some(newline_pos) = buffer.find('\n') {
+                    let line = buffer[..newline_pos].trim().to_string();
+                    buffer = buffer[newline_pos + 1..].to_string();
+
+                    if line.is_empty() || !line.starts_with("data: ") {
+                        continue;
+                    }
+
+                    let data = &line[6..];
+                    if data == "[DONE]" {
+                        yield Ok(LlmStreamChunk {
+                            delta: String::new(),
+                            stop_reason: Some(StopReason::EndTurn),
+                            usage: None,
+                        });
+                        return;
+                    }
+
+                    // Parse the ZhipuAI chunk JSON
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                        if let Some(choices) = parsed["choices"].as_array() {
+                            if let Some(choice) = choices.first() {
+                                let content = choice["delta"]["content"]
+                                    .as_str()
+                                    .unwrap_or("")
+                                    .to_string();
+                                let finish = choice["finish_reason"].as_str();
+                                let stop = match finish {
+                                    Some("stop") => Some(StopReason::EndTurn),
+                                    _ => None,
+                                };
+                                if !content.is_empty() || stop.is_some() {
+                                    yield Ok(LlmStreamChunk {
+                                        delta: content,
+                                        stop_reason: stop,
+                                        usage: None,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         };
 
-        Ok(Box::pin(stream::once(async move { Ok(chunk) })))
+        Ok(Box::pin(chunk_stream))
     }
 
     async fn test_connection(&self) -> Result<()> {

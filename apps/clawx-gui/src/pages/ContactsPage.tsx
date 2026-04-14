@@ -1,45 +1,95 @@
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Pencil, Trash2, Pin, PinOff, Search } from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import {
+  Trash2,
+  Pin,
+  PinOff,
+  Search,
+  FolderOpen,
+  Brain,
+  MessageSquare,
+  Pencil,
+  Zap,
+} from "lucide-react";
 import {
   getAgent,
   deleteAgent,
   listMemories,
   deleteMemory,
   pinMemory,
-  getPermissionProfile,
+  listKnowledgeSources,
+  listSkills,
+  createConversation,
 } from "../lib/api";
 import { STATUS_COLORS, MEMORY_TYPE_COLORS } from "../lib/constants";
-import type { Agent, Memory, PermissionProfile } from "../lib/types";
+import type { Agent, Memory, KnowledgeSource, Skill } from "../lib/types";
 import AgentForm from "../components/AgentForm";
 
-type Tab = "profile" | "memories" | "permissions";
+// Avatar background colors derived from agent name
+const AVATAR_COLORS = [
+  "#7c5cfc",
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#06b6d4",
+  "#ec4899",
+];
+
+function getAvatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  return new Date(dateStr).toLocaleDateString("zh-CN", {
     year: "numeric",
-    month: "short",
+    month: "long",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
+}
+
+// Extract filename from path
+function getFileName(path: string): string {
+  const parts = path.split("/");
+  return parts[parts.length - 1] || path;
+}
+
+// Extract parent directory as description
+function getFileDescription(path: string): string {
+  const parts = path.split("/");
+  if (parts.length > 1) {
+    return parts.slice(0, -1).join("/");
+  }
+  return "";
 }
 
 export default function ContactsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const agentId = searchParams.get("agent");
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [memories, setMemories] = useState<Memory[]>([]);
-  const [permissions, setPermissions] = useState<PermissionProfile | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("profile");
+  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>(
+    [],
+  );
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [memoriesError, setMemoriesError] = useState<string | null>(null);
-  const [permissionsError, setPermissionsError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [memorySearch, setMemorySearch] = useState("");
+
+  // Mock stats (no dedicated endpoint yet)
+  const mockStats = { conversations: 28, artifacts: 15 };
+
+  // Mock capability tags
+  const capabilityTags = ["Python", "Bash", "TypeScript", "SQL", "Docker"];
 
   const loadAgent = useCallback(async (id: string) => {
     setLoading(true);
@@ -55,28 +105,29 @@ export default function ContactsPage() {
   }, []);
 
   const loadMemories = useCallback(async (id: string) => {
-    setMemoriesError(null);
     try {
       const data = await listMemories(id);
       setMemories(data);
-    } catch (err) {
+    } catch {
       setMemories([]);
-      setMemoriesError(
-        err instanceof Error ? err.message : "Failed to load memories",
-      );
     }
   }, []);
 
-  const loadPermissions = useCallback(async (id: string) => {
-    setPermissionsError(null);
+  const loadKnowledgeSources = useCallback(async (agentId: string) => {
     try {
-      const data = await getPermissionProfile(id);
-      setPermissions(data);
-    } catch (err) {
-      setPermissions(null);
-      setPermissionsError(
-        err instanceof Error ? err.message : "Failed to load permissions",
-      );
+      const all = await listKnowledgeSources();
+      setKnowledgeSources(all.filter((ks) => ks.agent_id === agentId));
+    } catch {
+      setKnowledgeSources([]);
+    }
+  }, []);
+
+  const loadSkills = useCallback(async () => {
+    try {
+      const data = await listSkills();
+      setSkills(data.filter((s) => s.status === "enabled"));
+    } catch {
+      setSkills([]);
     }
   }, []);
 
@@ -84,13 +135,15 @@ export default function ContactsPage() {
     if (!agentId) {
       setAgent(null);
       setMemories([]);
-      setPermissions(null);
+      setKnowledgeSources([]);
+      setSkills([]);
       return;
     }
     loadAgent(agentId);
     loadMemories(agentId);
-    loadPermissions(agentId);
-  }, [agentId, loadAgent, loadMemories, loadPermissions]);
+    loadKnowledgeSources(agentId);
+    loadSkills();
+  }, [agentId, loadAgent, loadMemories, loadKnowledgeSources, loadSkills]);
 
   const handleDelete = useCallback(async () => {
     if (!agent) return;
@@ -103,44 +156,50 @@ export default function ContactsPage() {
       await deleteAgent(agent.id);
       setAgent(null);
       setMemories([]);
-      setPermissions(null);
+      setKnowledgeSources([]);
       setSearchParams({});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete agent");
     }
   }, [agent, setSearchParams]);
 
-  const handleDeleteMemory = useCallback(
-    async (memoryId: string) => {
-      setMutationError(null);
-      try {
-        await deleteMemory(memoryId);
-        setMemories((prev) => prev.filter((m) => m.id !== memoryId));
-      } catch (err) {
-        setMutationError(
-          err instanceof Error ? err.message : "Failed to delete memory",
-        );
-      }
-    },
-    [],
-  );
+  const handleDeleteMemory = useCallback(async (memoryId: string) => {
+    setMutationError(null);
+    try {
+      await deleteMemory(memoryId);
+      setMemories((prev) => prev.filter((m) => m.id !== memoryId));
+    } catch (err) {
+      setMutationError(
+        err instanceof Error ? err.message : "Failed to delete memory",
+      );
+    }
+  }, []);
 
-  const handlePinMemory = useCallback(
-    async (memoryId: string) => {
-      setMutationError(null);
-      try {
-        const updated = await pinMemory(memoryId);
-        setMemories((prev) =>
-          prev.map((m) => (m.id === memoryId ? updated : m)),
-        );
-      } catch (err) {
-        setMutationError(
-          err instanceof Error ? err.message : "Failed to update memory pin",
-        );
-      }
-    },
-    [],
-  );
+  const handlePinMemory = useCallback(async (memoryId: string) => {
+    setMutationError(null);
+    try {
+      const updated = await pinMemory(memoryId);
+      setMemories((prev) =>
+        prev.map((m) => (m.id === memoryId ? updated : m)),
+      );
+    } catch (err) {
+      setMutationError(
+        err instanceof Error ? err.message : "Failed to update memory pin",
+      );
+    }
+  }, []);
+
+  const handleSendMessage = useCallback(async () => {
+    if (!agent) return;
+    try {
+      const conv = await createConversation(agent.id);
+      navigate(`/chat?agent=${agent.id}&conv=${conv.id}`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to create conversation",
+      );
+    }
+  }, [agent, navigate]);
 
   const filteredMemories = memorySearch
     ? memories.filter(
@@ -150,7 +209,7 @@ export default function ContactsPage() {
       )
     : memories;
 
-  // Empty state — no agent selected
+  // Empty state -- no agent selected
   if (!agentId) {
     return (
       <div className="empty-state">
@@ -168,7 +227,7 @@ export default function ContactsPage() {
     );
   }
 
-  if (error) {
+  if (error && !agent) {
     return (
       <div className="empty-state">
         <h2>Error</h2>
@@ -187,35 +246,45 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="agent-detail">
-      {/* Header */}
-      <div className="agent-detail-header">
-        <div className="agent-detail-header-left">
-          <div className="agent-detail-avatar">
+    <div className="contacts-detail">
+      {/* Agent Header */}
+      <div className="contacts-header">
+        <div className="contacts-header-left">
+          <div
+            className="contacts-avatar"
+            style={{ background: getAvatarColor(agent.name) }}
+          >
             {agent.name.charAt(0).toUpperCase()}
           </div>
-          <div>
-            <h2 className="agent-detail-name">{agent.name}</h2>
-            <span className="agent-detail-role">{agent.role}</span>
+          <div className="contacts-info">
+            <div className="contacts-name-row">
+              <h2 className="contacts-name">{agent.name}</h2>
+              <span
+                className="agent-status-badge"
+                style={{
+                  background: STATUS_COLORS[agent.status],
+                  color: agent.status === "working" ? "#1a1a2e" : "#fff",
+                }}
+              >
+                {agent.status}
+              </span>
+            </div>
+            <span className="contacts-model">
+              {agent.model_id ?? "Default Model"}
+            </span>
+            <span className="contacts-time">
+              创建于 {formatDate(agent.created_at)}
+            </span>
           </div>
-          <span
-            className="agent-status-badge"
-            style={{
-              background: STATUS_COLORS[agent.status],
-              color: agent.status === "working" ? "#1a1a2e" : "#fff",
-            }}
-          >
-            {agent.status}
-          </span>
         </div>
-        <div className="agent-detail-actions">
-          <button
-            className="btn-icon"
-            onClick={() => setEditing(true)}
-            title="Edit agent"
-            aria-label="Edit agent"
-          >
-            <Pencil size={16} />
+        <div className="contacts-actions">
+          <button className="btn-primary" onClick={handleSendMessage}>
+            <MessageSquare size={14} />
+            发消息
+          </button>
+          <button className="btn-outline" onClick={() => setEditing(true)}>
+            <Pencil size={14} />
+            编辑
           </button>
           <button
             className="btn-icon btn-danger"
@@ -228,167 +297,177 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="tabs">
-        {(["profile", "memories", "permissions"] as Tab[]).map((tab) => (
-          <button
-            key={tab}
-            className={`tab ${activeTab === tab ? "active" : ""}`}
-            onClick={() => setActiveTab(tab)}
-            aria-label={`${tab} tab`}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
-      </div>
+      {/* Description */}
+      {agent.system_prompt && (
+        <p className="contacts-description">{agent.role}</p>
+      )}
 
-      {/* Tab content */}
-      <div className="tab-content">
-        {activeTab === "profile" && (
-          <div className="profile-section">
-            <div className="profile-field">
-              <span className="profile-field-label">Name</span>
-              <span className="profile-field-value">{agent.name}</span>
+      {/* Error banner */}
+      {(error || mutationError) && (
+        <p className="form-error" style={{ margin: "0 24px" }}>
+          {error || mutationError}
+        </p>
+      )}
+
+      {/* Scrollable content area */}
+      <div className="contacts-body">
+        {/* Stats Overview */}
+        <section className="contacts-section">
+          <h3 className="contacts-section-title">统计概览</h3>
+          <div className="contacts-stats">
+            <div className="stat-card">
+              <div className="stat-number">{mockStats.conversations}</div>
+              <div className="stat-label">对话</div>
             </div>
-            <div className="profile-field">
-              <span className="profile-field-label">Role</span>
-              <span className="profile-field-value">{agent.role}</span>
-            </div>
-            <div className="profile-field">
-              <span className="profile-field-label">Model</span>
-              <span className="profile-field-value">
-                {agent.model_id ?? "Default"}
-              </span>
-            </div>
-            <div className="profile-field">
-              <span className="profile-field-label">System Prompt</span>
-              <span className="profile-field-value profile-field-pre">
-                {agent.system_prompt || "(none)"}
-              </span>
-            </div>
-            <div className="profile-field">
-              <span className="profile-field-label">Created</span>
-              <span className="profile-field-value">
-                {formatDate(agent.created_at)}
-              </span>
-            </div>
-            <div className="profile-field">
-              <span className="profile-field-label">Updated</span>
-              <span className="profile-field-value">
-                {formatDate(agent.updated_at)}
-              </span>
+            <div className="stat-card">
+              <div className="stat-number">{mockStats.artifacts}</div>
+              <div className="stat-label">产物</div>
             </div>
           </div>
-        )}
+          <div className="contacts-tags">
+            {capabilityTags.map((tag) => (
+              <span key={tag} className="skill-tag">
+                {tag}
+              </span>
+            ))}
+          </div>
+        </section>
 
-        {activeTab === "memories" && (
-          <div className="memories-section">
-            {mutationError && (
-              <p className="form-error">{mutationError}</p>
-            )}
-            {memoriesError && (
-              <p className="form-error">{memoriesError}</p>
-            )}
-            <div className="memories-search">
-              <Search size={14} className="search-icon" />
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Search memories..."
-                aria-label="Search memories"
-                value={memorySearch}
-                onChange={(e) => setMemorySearch(e.target.value)}
-              />
+        {/* Knowledge Documents */}
+        <section className="contacts-section">
+          <h3 className="contacts-section-title">
+            <FolderOpen size={16} />
+            知识文档
+          </h3>
+          {knowledgeSources.length === 0 ? (
+            <p className="list-placeholder">暂无知识文档</p>
+          ) : (
+            <div className="contacts-knowledge-list">
+              {knowledgeSources.map((ks) => (
+                <div key={ks.id} className="contacts-knowledge-item">
+                  <div className="contacts-knowledge-icon">
+                    <FolderOpen size={16} />
+                  </div>
+                  <div className="contacts-knowledge-info">
+                    <span className="contacts-knowledge-name">
+                      {getFileName(ks.path)}
+                    </span>
+                    <span className="contacts-knowledge-desc">
+                      {getFileDescription(ks.path)}
+                      {ks.doc_count > 0 && ` · ${ks.doc_count} docs`}
+                      {ks.chunk_count > 0 && ` · ${ks.chunk_count} chunks`}
+                    </span>
+                  </div>
+                  <span
+                    className="contacts-knowledge-status"
+                    data-status={ks.status}
+                  >
+                    {ks.status}
+                  </span>
+                </div>
+              ))}
             </div>
-            {filteredMemories.length === 0 ? (
-              <p className="list-placeholder">
-                {memorySearch ? "No matching memories" : "No memories yet"}
-              </p>
-            ) : (
-              <div className="memory-list">
-                {filteredMemories.map((mem) => (
-                  <div key={mem.id} className="memory-item">
-                    <div className="memory-item-top">
+          )}
+        </section>
+
+        {/* Memories */}
+        <section className="contacts-section">
+          <h3 className="contacts-section-title">
+            <Brain size={16} />
+            记忆
+            <span className="contacts-section-count">{memories.length}</span>
+          </h3>
+          <div className="memories-search" style={{ marginBottom: 12 }}>
+            <Search size={14} className="search-icon" />
+            <input
+              type="text"
+              className="search-input"
+              placeholder="搜索记忆..."
+              aria-label="Search memories"
+              value={memorySearch}
+              onChange={(e) => setMemorySearch(e.target.value)}
+            />
+          </div>
+          {filteredMemories.length === 0 ? (
+            <p className="list-placeholder">
+              {memorySearch ? "未找到匹配的记忆" : "暂无记忆"}
+            </p>
+          ) : (
+            <div className="contacts-memory-list">
+              {filteredMemories.map((mem) => (
+                <div key={mem.id} className="contacts-memory-item">
+                  <div className="contacts-memory-icon">
+                    <Brain size={14} />
+                  </div>
+                  <div className="contacts-memory-content">
+                    <div className="contacts-memory-top">
                       <span
                         className="memory-type-badge"
-                        style={{ background: MEMORY_TYPE_COLORS[mem.memory_type] }}
+                        style={{
+                          background: MEMORY_TYPE_COLORS[mem.memory_type],
+                        }}
                       >
                         {mem.memory_type}
                       </span>
-                      <div className="memory-item-actions">
-                        <button
-                          className="btn-icon-sm"
-                          onClick={() => handlePinMemory(mem.id)}
-                          title={mem.pinned ? "Unpin" : "Pin"}
-                          aria-label={mem.pinned ? "Unpin memory" : "Pin memory"}
-                        >
-                          {mem.pinned ? <PinOff size={14} /> : <Pin size={14} />}
-                        </button>
-                        <button
-                          className="btn-icon-sm btn-danger"
-                          onClick={() => handleDeleteMemory(mem.id)}
-                          title="Delete memory"
-                          aria-label="Delete memory"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      {mem.pinned && (
+                        <Pin size={12} className="contacts-memory-pinned" />
+                      )}
                     </div>
-                    <p className="memory-summary">{mem.summary}</p>
-                    <div className="memory-meta">
-                      <span>Importance: {mem.importance.toFixed(1)}</span>
-                      <span>Freshness: {mem.freshness.toFixed(1)}</span>
-                      <span>{formatDate(mem.created_at)}</span>
-                    </div>
+                    <p className="contacts-memory-text">{mem.summary}</p>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "permissions" && (
-          <div className="permissions-section">
-            {permissionsError && (
-              <p className="form-error">{permissionsError}</p>
-            )}
-            {permissions ? (
-              <>
-                <div className="profile-field">
-                  <span className="profile-field-label">Trust Level</span>
-                  <span className="trust-badge">{permissions.trust_level}</span>
+                  <div className="contacts-memory-actions">
+                    <button
+                      className="btn-icon-sm"
+                      onClick={() => handlePinMemory(mem.id)}
+                      title={mem.pinned ? "Unpin" : "Pin"}
+                      aria-label={mem.pinned ? "Unpin memory" : "Pin memory"}
+                    >
+                      {mem.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+                    </button>
+                    <button
+                      className="btn-icon-sm btn-danger"
+                      onClick={() => handleDeleteMemory(mem.id)}
+                      title="Delete memory"
+                      aria-label="Delete memory"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-                <div className="profile-field">
-                  <span className="profile-field-label">Safety Incidents</span>
-                  <span className="profile-field-value">
-                    {permissions.safety_incidents}
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Skills */}
+        <section className="contacts-section">
+          <h3 className="contacts-section-title">
+            <Zap size={16} />
+            Skills
+          </h3>
+          {skills.length === 0 ? (
+            <p className="list-placeholder">暂无已启用的技能</p>
+          ) : (
+            <div className="contacts-skills-list">
+              {skills.map((skill) => (
+                <div key={skill.id} className="contacts-skill-item">
+                  <div className="contacts-skill-icon">
+                    <Zap size={14} />
+                  </div>
+                  <div className="contacts-skill-info">
+                    <span className="contacts-skill-name">{skill.name}</span>
+                    <span className="contacts-skill-desc">
+                      {skill.description}
+                    </span>
+                  </div>
+                  <span className="contacts-skill-version">
+                    v{skill.version}
                   </span>
                 </div>
-                <h4 className="permissions-heading">Capability Scores</h4>
-                {Object.entries(permissions.capability_scores).length === 0 ? (
-                  <p className="list-placeholder">No capabilities configured</p>
-                ) : (
-                  <div className="capability-list">
-                    {Object.entries(permissions.capability_scores).map(
-                      ([key, value]) => (
-                        <div key={key} className="capability-item">
-                          <span className="capability-name">{key}</span>
-                          <span className="capability-value">
-                            {String(value)}
-                          </span>
-                        </div>
-                      ),
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <p className="list-placeholder">
-                No permission profile available
-              </p>
-            )}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
       {/* Edit modal */}

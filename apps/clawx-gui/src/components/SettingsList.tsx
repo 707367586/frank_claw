@@ -1,11 +1,13 @@
 import { useSearchParams } from "react-router-dom";
-import { Cpu, Shield, Activity, Info } from "lucide-react";
+import { Cpu, Shield, Palette, Activity, Info, MessageCircle } from "lucide-react";
 
 const SETTINGS_CATEGORIES = [
-  { key: "models", label: "Models", icon: Cpu },
-  { key: "security", label: "Security", icon: Shield },
-  { key: "system", label: "System", icon: Activity },
-  { key: "about", label: "About", icon: Info },
+  { key: "models", label: "模型", icon: Cpu },
+  { key: "security", label: "安全", icon: Shield },
+  { key: "appearance", label: "外观与语言", icon: Palette },
+  { key: "system", label: "健康", icon: Activity },
+  { key: "about", label: "关于", icon: Info },
+  { key: "feedback", label: "反馈", icon: MessageCircle },
 ] as const;
 
 export default function SettingsList() {
@@ -15,7 +17,7 @@ export default function SettingsList() {
   return (
     <aside className="list-panel">
       <div className="list-panel-header">
-        <h2 className="list-panel-title">Settings</h2>
+        <h2 className="settings-sidebar-title">Settings</h2>
       </div>
       <div className="list-panel-content">
         {SETTINGS_CATEGORIES.map((cat) => {

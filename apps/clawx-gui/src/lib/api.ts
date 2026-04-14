@@ -226,11 +226,11 @@ export function sendMessageStream(
   onError?: (err: Error) => void,
 ): AbortController {
   return connectSSE(
-    `/conversations/${encodeURIComponent(convId)}/messages?stream=true`,
+    `/conversations/${encodeURIComponent(convId)}/messages`,
     onMessage,
     onDone,
     onError,
-    { content },
+    { role: "user", content, stream: true },
   );
 }
 

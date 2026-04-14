@@ -1,14 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, Plus } from "lucide-react";
-import { listChannels, listAgents } from "../lib/api";
-import type { Channel, Agent } from "../lib/types";
-
-const CHANNEL_STATUS_COLORS: Record<Channel["status"], string> = {
-  connected: "#4ade80",
-  disconnected: "#6b7280",
-  error: "#f87171",
-};
+import { listChannels } from "../lib/api";
+import { CHANNEL_STATUS_COLORS } from "../lib/constants";
+import { useAgents } from "../lib/store";
+import type { Channel } from "../lib/types";
 
 const CHANNEL_TYPE_LABELS: Record<Channel["channel_type"], string> = {
   telegram: "TG",
@@ -28,7 +24,7 @@ export default function ChannelList({
   const selectedId = searchParams.get("channel");
 
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const { agents } = useAgents();
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,12 +32,8 @@ export default function ChannelList({
   const loadChannels = useCallback(async () => {
     try {
       setError(null);
-      const [channelData, agentData] = await Promise.all([
-        listChannels(),
-        listAgents(),
-      ]);
+      const channelData = await listChannels();
       setChannels(channelData);
-      setAgents(agentData);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load channels",

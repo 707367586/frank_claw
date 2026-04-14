@@ -14,7 +14,10 @@ use clawx_types::channel::{Channel, ChannelType, OutboundMessage};
 use clawx_types::error::{ClawxError, Result};
 use clawx_types::ids::ChannelId;
 
+pub mod lark;
 pub mod telegram;
+
+pub use lark::LarkAdapter;
 pub use telegram::TelegramAdapter;
 
 /// Adapter trait for connecting to a messaging platform.
@@ -192,49 +195,6 @@ impl ChannelAdapter for StubChannelAdapter {
     }
 }
 
-/// Lark/Feishu adapter (placeholder for future WebSocket implementation).
-pub struct LarkAdapter {
-    inner: StubChannelAdapter,
-}
-
-impl LarkAdapter {
-    pub fn new() -> Self {
-        Self {
-            inner: StubChannelAdapter::new(ChannelType::Lark),
-        }
-    }
-}
-
-impl Default for LarkAdapter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl ChannelAdapter for LarkAdapter {
-    async fn connect(&self, channel: &Channel) -> Result<()> {
-        if channel.config.get("app_id").is_none() || channel.config.get("app_secret").is_none() {
-            return Err(ClawxError::Channel(
-                "lark channel requires 'app_id' and 'app_secret' in config".to_string(),
-            ));
-        }
-        self.inner.connect(channel).await
-    }
-
-    async fn disconnect(&self, channel_id: &ChannelId) -> Result<()> {
-        self.inner.disconnect(channel_id).await
-    }
-
-    async fn send_message(&self, msg: &OutboundMessage) -> Result<()> {
-        self.inner.send_message(msg).await
-    }
-
-    async fn is_connected(&self, channel_id: &ChannelId) -> bool {
-        self.inner.is_connected(channel_id).await
-    }
-}
-
 // ---------------------------------------------------------------------------
 // MessageRouter: routes inbound messages to the correct agent
 // ---------------------------------------------------------------------------
@@ -279,7 +239,6 @@ impl MessageRouter {
         })
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -444,8 +403,8 @@ mod tests {
 
     #[tokio::test]
     async fn lark_disconnect_and_is_connected() {
-        // LarkAdapter.connect() now calls the real API, so we test
-        // disconnect/is_connected by manually inserting state.
+        // LarkAdapter.connect() calls the real API, so we test
+        // disconnect/is_connected without needing a server.
         let adapter = LarkAdapter::new();
         let cid = ChannelId::new();
 
@@ -455,6 +414,20 @@ mod tests {
         // Disconnect on unknown channel is a no-op (just removes from map).
         adapter.disconnect(&cid).await.unwrap();
         assert!(!adapter.is_connected(&cid).await);
+    }
+
+    #[tokio::test]
+    async fn lark_send_requires_connection() {
+        let adapter = LarkAdapter::new();
+        let msg = OutboundMessage {
+            channel_id: ChannelId::new(),
+            content: "hello".to_string(),
+            thread_id: None,
+            reply_to: Some("oc_xxx".to_string()),
+        };
+
+        let err = adapter.send_message(&msg).await.unwrap_err();
+        assert!(matches!(err, ClawxError::Channel(ref m) if m.contains("not connected")));
     }
 
     // -----------------------------------------------------------------------

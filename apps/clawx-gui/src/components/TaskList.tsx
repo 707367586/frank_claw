@@ -1,14 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, Plus, Clock, CalendarClock } from "lucide-react";
-import { listTasks, listAgents } from "../lib/api";
-import type { Agent, Task } from "../lib/types";
-
-const LIFECYCLE_COLORS: Record<Task["lifecycle_status"], string> = {
-  active: "#4ade80",
-  paused: "#facc15",
-  archived: "#6b7280",
-};
+import { listTasks } from "../lib/api";
+import { LIFECYCLE_COLORS } from "../lib/constants";
+import { useAgents } from "../lib/store";
+import type { Task } from "../lib/types";
 
 function formatNextFire(dateStr: string | null | undefined): string {
   if (!dateStr) return "No schedule";
@@ -26,7 +22,6 @@ export default function TaskList() {
   const selectedId = searchParams.get("task");
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [agents, setAgents] = useState<Map<string, string>>(new Map());
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,22 +32,22 @@ export default function TaskList() {
   const [newAgentId, setNewAgentId] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [agentList, setAgentList] = useState<Agent[]>([]);
+
+  const { agents: agentList } = useAgents();
+
+  const agents = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of agentList) {
+      map.set(a.id, a.name);
+    }
+    return map;
+  }, [agentList]);
 
   const loadData = useCallback(async () => {
     try {
       setError(null);
-      const [taskData, agentData] = await Promise.all([
-        listTasks(),
-        listAgents(),
-      ]);
+      const taskData = await listTasks();
       setTasks(taskData);
-      setAgentList(agentData);
-      const map = new Map<string, string>();
-      for (const a of agentData) {
-        map.set(a.id, a.name);
-      }
-      setAgents(map);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load tasks");
     } finally {

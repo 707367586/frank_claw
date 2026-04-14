@@ -321,7 +321,15 @@ fn build_llm_router() -> Arc<dyn clawx_types::traits::LlmProvider> {
         tracing::info!("registered ZhipuAI LLM provider");
     }
 
-    Arc::new(clawx_llm::LlmRouter::new(providers, "stub".to_string()))
+    // Use first real provider as default, fall back to stub
+    let default_provider = ["anthropic", "openai", "zhipu"]
+        .iter()
+        .find(|k| providers.contains_key(**k))
+        .map(|k| k.to_string())
+        .unwrap_or_else(|| "stub".to_string());
+    tracing::info!(default = %default_provider, "LLM router default provider");
+
+    Arc::new(clawx_llm::LlmRouter::new(providers, default_provider))
 }
 
 /// Build the security guard from config.

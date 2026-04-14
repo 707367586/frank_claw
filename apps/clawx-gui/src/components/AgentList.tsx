@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, Plus } from "lucide-react";
-import { listAgents } from "../lib/api";
 import { STATUS_COLORS } from "../lib/constants";
-import type { Agent } from "../lib/types";
+import { useAgents } from "../lib/store";
 
 export default function AgentList({
   onCreateAgent,
@@ -15,26 +14,13 @@ export default function AgentList({
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get("agent");
 
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const { agents, loading, error, refresh } = useAgents();
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const loadAgents = useCallback(async () => {
-    try {
-      setError(null);
-      const data = await listAgents();
-      setAgents(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load agents");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Refresh when refreshKey changes (e.g. after creating an agent)
   useEffect(() => {
-    loadAgents();
-  }, [loadAgents, refreshKey]);
+    if (refreshKey > 0) refresh();
+  }, [refreshKey, refresh]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();

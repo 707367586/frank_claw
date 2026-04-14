@@ -2,13 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, Plus, FolderOpen } from "lucide-react";
 import { listKnowledgeSources, addKnowledgeSource } from "../lib/api";
+import { KB_STATUS_COLORS } from "../lib/constants";
 import type { KnowledgeSource } from "../lib/types";
 
-const KB_STATUS_COLORS: Record<KnowledgeSource["status"], string> = {
-  indexing: "#facc15",
-  ready: "#4ade80",
-  error: "#f87171",
-};
+const FOLDER_COLORS = [
+  "#7C5CFC", "#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#fb923c", "#22d3ee",
+];
 
 function truncatePath(path: string, maxLen = 28): string {
   if (path.length <= maxLen) return path;
@@ -87,14 +86,13 @@ export default function KnowledgeSourceList() {
     <aside className="list-panel">
       <div className="list-panel-header">
         <div className="list-panel-header-row">
-          <h2 className="list-panel-title">Knowledge Base</h2>
+          <h2 className="list-panel-title">Knowledge Sources</h2>
           <button
-            className="new-chat-btn"
+            className="btn-add-green"
             onClick={() => setShowAddForm((v) => !v)}
-            title="Add Source"
             aria-label="Add knowledge source"
           >
-            <Plus size={16} />
+            <Plus size={14} /> 添加知识源
           </button>
         </div>
       </div>
@@ -161,14 +159,17 @@ export default function KnowledgeSourceList() {
             {search ? "No matches" : "No knowledge sources yet"}
           </p>
         )}
-        {filtered.map((source) => (
+        {filtered.map((source, idx) => (
           <button
             key={source.id}
             className={`kb-source-card ${selectedId === source.id ? "selected" : ""}`}
             onClick={() => handleSelect(source.id)}
             aria-label={`Select knowledge source ${source.path}`}
           >
-            <div className="kb-source-icon">
+            <div
+              className="kb-source-icon"
+              style={{ background: FOLDER_COLORS[idx % FOLDER_COLORS.length] + "22", color: FOLDER_COLORS[idx % FOLDER_COLORS.length] }}
+            >
               <FolderOpen size={18} />
             </div>
             <div className="kb-source-info">
@@ -176,7 +177,8 @@ export default function KnowledgeSourceList() {
                 {truncatePath(source.path)}
               </span>
               <span className="kb-source-stats">
-                {source.doc_count} docs / {source.chunk_count} chunks
+                {source.doc_count} docs
+                <span className="kb-source-agent-tag">{source.agent_id.slice(0, 6)}</span>
               </span>
             </div>
             <span

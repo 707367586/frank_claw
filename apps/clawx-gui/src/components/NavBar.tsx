@@ -3,16 +3,16 @@ import {
   MessageSquare,
   Users,
   BookOpen,
-  Clock,
+  CalendarClock,
   Link,
   Settings,
 } from "lucide-react";
 
 const navItems = [
   { icon: MessageSquare, label: "Chat", path: "/" },
-  { icon: Users, label: "Contacts", path: "/contacts" },
+  { icon: Users, label: "Agent & Skill", path: "/agents" },
   { icon: BookOpen, label: "Knowledge", path: "/knowledge" },
-  { icon: Clock, label: "Tasks", path: "/tasks" },
+  { icon: CalendarClock, label: "Tasks", path: "/tasks" },
   { icon: Link, label: "Connectors", path: "/connectors" },
 ];
 
@@ -27,8 +27,20 @@ export default function NavBar() {
 
   return (
     <nav className="nav-bar" aria-label="Main navigation">
-      <div className="nav-bar-top">
-        <div className="nav-logo">C</div>
+      {/* Window controls placeholder (Tauri will render native ones) */}
+      <div className="nav-window-controls">
+        <span className="nav-dot nav-dot--close" />
+        <span className="nav-dot nav-dot--minimize" />
+        <span className="nav-dot nav-dot--maximize" />
+      </div>
+
+      {/* Avatar */}
+      <div className="nav-avatar-section">
+        <div className="nav-avatar">周</div>
+      </div>
+
+      {/* Main nav icons */}
+      <div className="nav-icons">
         {navItems.map((item) => (
           <button
             key={item.path}
@@ -41,7 +53,9 @@ export default function NavBar() {
           </button>
         ))}
       </div>
-      <div className="nav-bar-bottom">
+
+      {/* Bottom: Settings */}
+      <div className="nav-bottom">
         <button
           className={`nav-icon-btn ${isActive("/settings") ? "active" : ""}`}
           onClick={() => navigate("/settings")}

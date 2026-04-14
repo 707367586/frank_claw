@@ -1,6 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Trash2, Key, KeyRound } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Key,
+  FlaskConical,
+  Pencil,
+  Shield,
+  FileWarning,
+  Network,
+  Sun,
+  Moon,
+  Monitor,
+  Send,
+} from "lucide-react";
 import {
   listModels,
   createModel,
@@ -13,18 +26,68 @@ import type { ModelProvider, SystemHealth, SystemStats } from "../lib/types";
 const PROVIDER_TYPES: ModelProvider["provider_type"][] = [
   "anthropic",
   "openai",
-  "zhipuai",
+  "zhipu",
   "ollama",
   "custom",
 ];
 
 const PROVIDER_TYPE_LABELS: Record<ModelProvider["provider_type"], string> = {
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-  zhipuai: "ZhipuAI",
-  ollama: "Ollama",
+  anthropic: "Anthropic (Claude)",
+  openai: "OpenAI (GPT)",
+  zhipu: "ZhipuAI (GLM)",
+  ollama: "Ollama (Local)",
   custom: "Custom",
 };
+
+const PROVIDER_SHORT_LABELS: Record<ModelProvider["provider_type"], string> = {
+  anthropic: "AN",
+  openai: "OA",
+  zhipu: "ZP",
+  ollama: "OL",
+  custom: "CU",
+};
+
+function getDefaultBaseUrl(providerType: string): string {
+  switch (providerType) {
+    case "anthropic": return "https://api.anthropic.com";
+    case "openai": return "https://api.openai.com/v1";
+    case "zhipu": return "https://open.bigmodel.cn/api/paas/v4";
+    default: return "http://localhost:11434";
+  }
+}
+
+const PROVIDER_COLORS: Record<ModelProvider["provider_type"], string> = {
+  anthropic: "#d97706",
+  openai: "#10b981",
+  zhipu: "#6366f1",
+  ollama: "#8b5cf6",
+  custom: "#64748b",
+};
+
+// Mock data for agent model assignment
+const MOCK_AGENT_ASSIGNMENTS = [
+  {
+    id: "1",
+    agent: "客服助手",
+    strategy: "Fixed" as const,
+    model: "claude-sonnet-4-20250514",
+    provider: "Anthropic",
+  },
+  {
+    id: "2",
+    agent: "代码审查",
+    strategy: "Smart Routing" as const,
+    model: "gpt-4o / claude-sonnet-4-20250514",
+    provider: "Multi",
+  },
+  {
+    id: "3",
+    agent: "数据分析",
+    strategy: "Fixed" as const,
+    model: "glm-4",
+    provider: "ZhipuAI",
+  },
+];
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -44,6 +107,7 @@ function formatUptime(seconds: number): string {
   return parts.join(" ");
 }
 
+
 // ── Models Section ──
 
 function ModelsSection() {
@@ -52,10 +116,12 @@ function ModelsSection() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
 
   // Create form state
   const [formName, setFormName] = useState("");
-  const [formType, setFormType] = useState<ModelProvider["provider_type"]>("anthropic");
+  const [formType, setFormType] =
+    useState<ModelProvider["provider_type"]>("anthropic");
   const [formApiKey, setFormApiKey] = useState("");
   const [formBaseUrl, setFormBaseUrl] = useState("");
   const [formDefaultModel, setFormDefaultModel] = useState("");
@@ -85,11 +151,12 @@ function ModelsSection() {
       const data: Record<string, unknown> = {
         name: formName.trim(),
         provider_type: formType,
-        default_model: formDefaultModel.trim(),
+        model_name: formDefaultModel.trim(),
+        base_url: formBaseUrl || getDefaultBaseUrl(formType),
       };
-      if (formApiKey) data.api_key = formApiKey;
-      if (formBaseUrl) data.base_url = formBaseUrl;
-      await createModel(data as Partial<Omit<ModelProvider, "id" | "created_at">>);
+      await createModel(
+        data as Partial<Omit<ModelProvider, "id" | "created_at">>,
+      );
       setFormName("");
       setFormType("anthropic");
       setFormApiKey("");
@@ -104,7 +171,14 @@ function ModelsSection() {
     } finally {
       setCreating(false);
     }
-  }, [formName, formType, formApiKey, formBaseUrl, formDefaultModel, loadModels]);
+  }, [
+    formName,
+    formType,
+    formApiKey,
+    formBaseUrl,
+    formDefaultModel,
+    loadModels,
+  ]);
 
   const handleDelete = useCallback(
     async (model: ModelProvider) => {
@@ -117,19 +191,30 @@ function ModelsSection() {
         await loadModels();
       } catch (err) {
         setMutationError(
-          err instanceof Error ? err.message : "Failed to delete model provider",
+          err instanceof Error
+            ? err.message
+            : "Failed to delete model provider",
         );
       }
     },
     [loadModels],
   );
 
+  const handleTestConnection = useCallback(async (modelId: string) => {
+    setTestingId(modelId);
+    // Simulate test connection delay
+    setTimeout(() => {
+      setTestingId(null);
+    }, 2000);
+  }, []);
+
   const showBaseUrl = formType === "custom" || formType === "ollama";
 
   return (
     <div className="settings-section">
+      {/* Provider cards */}
       <div className="settings-section-header">
-        <h3 className="settings-section-title">Model Providers</h3>
+        <h3 className="settings-section-title">Model Provider</h3>
         <button
           className="btn-primary"
           onClick={() => setShowForm((v) => !v)}
@@ -161,7 +246,9 @@ function ModelsSection() {
                 className="form-input"
                 value={formType}
                 onChange={(e) =>
-                  setFormType(e.target.value as ModelProvider["provider_type"])
+                  setFormType(
+                    e.target.value as ModelProvider["provider_type"],
+                  )
                 }
                 aria-label="Provider type"
               >
@@ -236,55 +323,132 @@ function ModelsSection() {
         <p className="list-placeholder">No model providers configured yet.</p>
       )}
 
-      <div className="model-provider-list">
-        {models.map((model) => (
-          <div key={model.id} className="model-provider-card">
-            <div className="model-provider-card-top">
-              <div className="model-provider-card-info">
-                <span className="model-provider-name">{model.name}</span>
-                <span className="model-provider-type-badge">
-                  {PROVIDER_TYPE_LABELS[model.provider_type]}
-                </span>
-              </div>
-              <button
-                className="btn-icon-sm btn-danger"
-                onClick={() => handleDelete(model)}
-                title="Delete provider"
-                aria-label={`Delete model provider ${model.name}`}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-            <div className="model-provider-details">
-              {model.base_url && (
-                <div className="model-provider-detail-row">
-                  <span className="model-provider-detail-label">URL</span>
-                  <span className="model-provider-detail-value">{model.base_url}</span>
+      <div className="provider-card-list">
+        {models.map((model) => {
+          const isAvailable = !!model.model_name;
+          return (
+            <div key={model.id} className="provider-card">
+              <div className="provider-card-header">
+                <div className="provider-card-identity">
+                  <div
+                    className="provider-avatar"
+                    style={{
+                      background: PROVIDER_COLORS[model.provider_type],
+                    }}
+                  >
+                    {PROVIDER_SHORT_LABELS[model.provider_type]}
+                  </div>
+                  <div className="provider-card-name-group">
+                    <span className="provider-card-name">{model.name}</span>
+                    <span className="provider-card-type">
+                      {PROVIDER_TYPE_LABELS[model.provider_type]}
+                    </span>
+                  </div>
                 </div>
-              )}
-              <div className="model-provider-detail-row">
-                <span className="model-provider-detail-label">Model</span>
-                <span className="model-provider-detail-value">
-                  {model.default_model || "—"}
+                <span
+                  className={`provider-status-badge ${isAvailable ? "status-available" : "status-needs-config"}`}
+                >
+                  {isAvailable ? "Available" : "需配置"}
                 </span>
               </div>
-              <div className="model-provider-detail-row">
-                <span className="model-provider-detail-label">API Key</span>
-                <span className="model-provider-detail-value">
-                  {model.api_key_set ? (
+
+              <div className="provider-card-details">
+                <div className="provider-detail-row">
+                  <span className="provider-detail-label">Models</span>
+                  <span className="provider-detail-value">
+                    {model.model_name || "—"}
+                  </span>
+                </div>
+                <div className="provider-detail-row">
+                  <span className="provider-detail-label">API Key</span>
+                  <span className="provider-detail-value">
                     <span className="api-key-set">
-                      <Key size={12} /> Set
+                      <Key size={12} /> Configured via ENV
                     </span>
-                  ) : (
-                    <span className="api-key-not-set">
-                      <KeyRound size={12} /> Not set
+                  </span>
+                </div>
+                {model.base_url && (
+                  <div className="provider-detail-row">
+                    <span className="provider-detail-label">Base URL</span>
+                    <span className="provider-detail-value">
+                      {model.base_url}
                     </span>
-                  )}
-                </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="provider-actions">
+                <button
+                  className="btn-secondary btn-sm"
+                  onClick={() => handleTestConnection(model.id)}
+                  disabled={testingId === model.id}
+                >
+                  <FlaskConical size={13} />
+                  <span>
+                    {testingId === model.id
+                      ? "Testing..."
+                      : "Test Connection"}
+                  </span>
+                </button>
+                <button className="btn-secondary btn-sm">
+                  <Pencil size={13} />
+                  <span>Edit</span>
+                </button>
+                <button
+                  className="btn-icon-sm btn-danger"
+                  onClick={() => handleDelete(model)}
+                  title="Delete provider"
+                  aria-label={`Delete model provider ${model.name}`}
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+      </div>
+
+      {/* Agent Model Assignment */}
+      <div className="settings-section-header" style={{ marginTop: 24 }}>
+        <h3 className="settings-section-title">Agent Model Assignment</h3>
+      </div>
+
+      <div className="model-assignment-table-wrap">
+        <table className="model-assignment-table">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Strategy</th>
+              <th>Model</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {MOCK_AGENT_ASSIGNMENTS.map((row) => (
+              <tr key={row.id}>
+                <td className="assignment-agent">{row.agent}</td>
+                <td>
+                  <span
+                    className={`assignment-strategy ${row.strategy === "Smart Routing" ? "strategy-smart" : ""}`}
+                  >
+                    {row.strategy}
+                  </span>
+                </td>
+                <td className="assignment-model">{row.model}</td>
+                <td>
+                  <button className="btn-link btn-sm">编辑</button>
+                </td>
+              </tr>
+            ))}
+            {MOCK_AGENT_ASSIGNMENTS.length === 0 && (
+              <tr>
+                <td colSpan={4} className="assignment-empty">
+                  No agent assignments yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -295,32 +459,166 @@ function ModelsSection() {
 function SecuritySection() {
   return (
     <div className="settings-section">
-      <h3 className="settings-section-title">Security</h3>
-      <div className="settings-placeholder-list">
-        <div className="settings-placeholder-card">
-          <h4 className="settings-placeholder-title">Network Whitelist</h4>
-          <p className="settings-placeholder-text">
-            Network whitelist management — coming in future update
-          </p>
+      <h3 className="settings-section-title">安全</h3>
+
+      <div className="security-categories">
+        <div className="security-card">
+          <div className="security-card-header">
+            <Network size={18} className="security-card-icon" />
+            <div>
+              <h4 className="security-card-title">Network Whitelist</h4>
+              <p className="security-card-desc">
+                配置允许访问的 IP 地址和域名白名单，限制 Agent 的网络访问范围
+              </p>
+            </div>
+          </div>
+          <div className="security-card-body">
+            <div className="security-rule-list">
+              <div className="security-rule-item">
+                <span className="security-rule-label">允许的域名</span>
+                <span className="security-rule-value">*.anthropic.com, *.openai.com</span>
+              </div>
+              <div className="security-rule-item">
+                <span className="security-rule-label">允许的 IP</span>
+                <span className="security-rule-value security-placeholder-value">未配置</span>
+              </div>
+              <div className="security-rule-item">
+                <span className="security-rule-label">状态</span>
+                <span className="security-rule-value">
+                  <span className="provider-status-badge status-needs-config">未启用</span>
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="settings-placeholder-card">
-          <h4 className="settings-placeholder-title">DLP (Data Loss Prevention)</h4>
-          <p className="settings-placeholder-text">
-            DLP policy status — coming in future update
-          </p>
+
+        <div className="security-card">
+          <div className="security-card-header">
+            <FileWarning size={18} className="security-card-icon" />
+            <div>
+              <h4 className="security-card-title">DLP (Data Loss Prevention)</h4>
+              <p className="security-card-desc">
+                防止敏感数据（API Key、密码、PII）通过 Agent 对话泄露
+              </p>
+            </div>
+          </div>
+          <div className="security-card-body">
+            <div className="security-rule-list">
+              <div className="security-rule-item">
+                <span className="security-rule-label">规则数量</span>
+                <span className="security-rule-value">3 条内置规则</span>
+              </div>
+              <div className="security-rule-item">
+                <span className="security-rule-label">自定义规则</span>
+                <span className="security-rule-value security-placeholder-value">未配置</span>
+              </div>
+              <div className="security-rule-item">
+                <span className="security-rule-label">状态</span>
+                <span className="security-rule-value">
+                  <span className="provider-status-badge status-needs-config">未启用</span>
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="settings-placeholder-card">
-          <h4 className="settings-placeholder-title">Prompt Injection Defense</h4>
-          <p className="settings-placeholder-text">
-            Prompt injection defense status — coming in future update
-          </p>
+
+        <div className="security-card">
+          <div className="security-card-header">
+            <Shield size={18} className="security-card-icon" />
+            <div>
+              <h4 className="security-card-title">Prompt Injection Defense</h4>
+              <p className="security-card-desc">
+                检测并阻止恶意 Prompt 注入攻击，保护 Agent 执行安全
+              </p>
+            </div>
+          </div>
+          <div className="security-card-body">
+            <div className="security-rule-list">
+              <div className="security-rule-item">
+                <span className="security-rule-label">检测模式</span>
+                <span className="security-rule-value">基于规则 + LLM 双重检测</span>
+              </div>
+              <div className="security-rule-item">
+                <span className="security-rule-label">拦截策略</span>
+                <span className="security-rule-value security-placeholder-value">未配置</span>
+              </div>
+              <div className="security-rule-item">
+                <span className="security-rule-label">状态</span>
+                <span className="security-rule-value">
+                  <span className="provider-status-badge status-needs-config">未启用</span>
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ── System Section ──
+// ── Appearance & Language Section ──
+
+function AppearanceSection() {
+  const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
+  const [language, setLanguage] = useState<"zh" | "en">("zh");
+
+  return (
+    <div className="settings-section">
+      <h3 className="settings-section-title">外观与语言</h3>
+
+      <div className="appearance-section">
+        <div className="appearance-card">
+          <h4 className="appearance-card-title">主题</h4>
+          <p className="appearance-card-desc">选择界面主题配色方案</p>
+          <div className="theme-selector">
+            <button
+              className={`theme-option ${theme === "dark" ? "selected" : ""}`}
+              onClick={() => setTheme("dark")}
+            >
+              <Moon size={16} />
+              <span>暗色</span>
+            </button>
+            <button
+              className={`theme-option ${theme === "light" ? "selected" : ""}`}
+              onClick={() => setTheme("light")}
+            >
+              <Sun size={16} />
+              <span>亮色</span>
+            </button>
+            <button
+              className={`theme-option ${theme === "system" ? "selected" : ""}`}
+              onClick={() => setTheme("system")}
+            >
+              <Monitor size={16} />
+              <span>跟随系统</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="appearance-card">
+          <h4 className="appearance-card-title">语言</h4>
+          <p className="appearance-card-desc">选择界面显示语言</p>
+          <div className="language-selector">
+            <button
+              className={`language-option ${language === "zh" ? "selected" : ""}`}
+              onClick={() => setLanguage("zh")}
+            >
+              中文
+            </button>
+            <button
+              className={`language-option ${language === "en" ? "selected" : ""}`}
+              onClick={() => setLanguage("en")}
+            >
+              English
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── System / Health Section ──
 
 function SystemSection() {
   const [health, setHealth] = useState<SystemHealth | null>(null);
@@ -336,7 +634,9 @@ function SystemSection() {
       setHealth(h);
       setStats(s);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load system data");
+      setError(
+        err instanceof Error ? err.message : "Failed to load system data",
+      );
     } finally {
       setLoading(false);
     }
@@ -359,7 +659,7 @@ function SystemSection() {
 
   return (
     <div className="settings-section">
-      <h3 className="settings-section-title">System</h3>
+      <h3 className="settings-section-title">系统健康</h3>
 
       {loading && <p className="list-placeholder">Loading system data...</p>}
       {error && <p className="form-error">{error}</p>}
@@ -380,7 +680,9 @@ function SystemSection() {
             </div>
             <div className="system-stat-card">
               <span className="system-stat-label">Uptime</span>
-              <span className="system-stat-value">{formatUptime(health.uptime)}</span>
+              <span className="system-stat-value">
+                {formatUptime(health.uptime)}
+              </span>
             </div>
             <div className="system-stat-card">
               <span className="system-stat-label">Version</span>
@@ -399,7 +701,9 @@ function SystemSection() {
               <span className="system-stat-label">Agents</span>
             </div>
             <div className="system-stat-card">
-              <span className="system-stat-value">{stats.conversation_count}</span>
+              <span className="system-stat-value">
+                {stats.conversation_count}
+              </span>
               <span className="system-stat-label">Conversations</span>
             </div>
             <div className="system-stat-card">
@@ -407,7 +711,9 @@ function SystemSection() {
               <span className="system-stat-label">Memories</span>
             </div>
             <div className="system-stat-card">
-              <span className="system-stat-value">{stats.knowledge_doc_count}</span>
+              <span className="system-stat-value">
+                {stats.knowledge_doc_count}
+              </span>
               <span className="system-stat-label">Knowledge Docs</span>
             </div>
             <div className="system-stat-card">
@@ -428,7 +734,7 @@ function SystemSection() {
 function AboutSection() {
   return (
     <div className="settings-section">
-      <h3 className="settings-section-title">About</h3>
+      <h3 className="settings-section-title">关于</h3>
       <div className="about-card">
         <div className="about-logo">CX</div>
         <h4 className="about-app-name">ClawX</h4>
@@ -447,7 +753,63 @@ function AboutSection() {
             <span className="about-detail-value">Rust (Axum)</span>
           </div>
         </div>
-        <p className="about-links-placeholder">Links — coming in future update</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Feedback Section ──
+
+function FeedbackSection() {
+  const [feedbackText, setFeedbackText] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = useCallback(() => {
+    if (!feedbackText.trim()) return;
+    // Simulate submit
+    setSubmitted(true);
+    setFeedbackText("");
+    setTimeout(() => setSubmitted(false), 3000);
+  }, [feedbackText]);
+
+  return (
+    <div className="settings-section">
+      <h3 className="settings-section-title">反馈</h3>
+
+      <div className="feedback-section">
+        <div className="feedback-card">
+          <p className="feedback-desc">
+            您的反馈对我们非常重要。请描述您遇到的问题或建议，我们会尽快处理。
+          </p>
+          <textarea
+            className="feedback-textarea"
+            value={feedbackText}
+            onChange={(e) => setFeedbackText(e.target.value)}
+            placeholder="请输入您的反馈内容..."
+            rows={5}
+          />
+          <div className="feedback-actions">
+            {submitted && (
+              <span className="feedback-success">感谢您的反馈！</span>
+            )}
+            <button
+              className="btn-primary"
+              onClick={handleSubmit}
+              disabled={!feedbackText.trim()}
+            >
+              <Send size={14} />
+              <span>发送反馈</span>
+            </button>
+          </div>
+          <a
+            className="feedback-link"
+            href="https://github.com"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            或在 GitHub 上提交 Issue
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -463,8 +825,10 @@ export default function SettingsPage() {
     <div className="settings-page">
       {section === "models" && <ModelsSection />}
       {section === "security" && <SecuritySection />}
+      {section === "appearance" && <AppearanceSection />}
       {section === "system" && <SystemSection />}
       {section === "about" && <AboutSection />}
+      {section === "feedback" && <FeedbackSection />}
     </div>
   );
 }

@@ -64,11 +64,13 @@ export interface VaultSnapshot {
 export interface ModelProvider {
   id: string;
   name: string;
-  provider_type: "anthropic" | "openai" | "zhipuai" | "ollama" | "custom";
-  api_key_set: boolean;
-  base_url: string | null;
-  default_model: string;
+  provider_type: "anthropic" | "openai" | "zhipu" | "ollama" | "custom";
+  base_url: string;
+  model_name: string;
+  parameters: unknown;
+  is_default: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Task {

@@ -224,6 +224,37 @@ async fn stream_agent_response(
 ) -> Sse<std::pin::Pin<Box<dyn futures::Stream<Item = Result<Event, std::convert::Infallible>> + Send>>> {
     use clawx_types::llm::*;
 
+    // Load conversation → agent → provider to get system prompt and model name
+    let conv_json = conversation_repo::get_conversation(&state.runtime.db.main, &conversation_id)
+        .await
+        .ok()
+        .flatten();
+
+    let (system_prompt, model_name) = {
+        let mut prompt = "You are a helpful assistant.".to_string();
+        let mut model = "default".to_string();
+
+        if let Some(ref conv) = conv_json {
+            if let Some(agent_id_str) = conv["agent_id"].as_str() {
+                if let Ok(aid) = agent_id_str.parse::<clawx_types::ids::AgentId>() {
+                    if let Ok(Some(agent)) = clawx_runtime::agent_repo::get_agent(&state.runtime.db.main, &aid).await {
+                        if let Some(sp) = &agent.system_prompt {
+                            prompt = sp.clone();
+                        }
+                        // Look up the agent's model provider for the actual model name
+                        if let Ok(Some(provider)) = clawx_runtime::model_repo::get_provider(
+                            &state.runtime.db.main,
+                            &agent.model_id,
+                        ).await {
+                            model = provider.model_name;
+                        }
+                    }
+                }
+            }
+        }
+        (prompt, model)
+    };
+
     // Load conversation history for context
     let messages_json = conversation_repo::list_messages(&state.runtime.db.main, &conversation_id)
         .await
@@ -233,7 +264,7 @@ async fn stream_agent_response(
 
     messages.push(Message {
         role: MessageRole::System,
-        content: "You are a helpful assistant.".to_string(),
+        content: system_prompt,
         tool_call_id: None,
     });
 
@@ -251,7 +282,7 @@ async fn stream_agent_response(
     }
 
     let request = CompletionRequest {
-        model: "default".to_string(),
+        model: model_name,
         messages,
         tools: None,
         temperature: None,

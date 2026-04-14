@@ -1,20 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, Trash2, RefreshCw, FolderOpen } from "lucide-react";
+import { Search, Trash2, RefreshCw, FolderOpen, FileText, Upload, BookOpen, Plus } from "lucide-react";
 import {
   listKnowledgeSources,
   deleteKnowledgeSource,
   addKnowledgeSource,
   searchKnowledge,
-  listAgents,
 } from "../lib/api";
-import type { KnowledgeSource, KnowledgeSearchResult, Agent } from "../lib/types";
-
-const KB_STATUS_COLORS: Record<KnowledgeSource["status"], string> = {
-  indexing: "#facc15",
-  ready: "#4ade80",
-  error: "#f87171",
-};
+import { KB_STATUS_COLORS } from "../lib/constants";
+import { useAgents } from "../lib/store";
+import type { KnowledgeSource, KnowledgeSearchResult } from "../lib/types";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -45,15 +40,7 @@ export default function KnowledgePage() {
   const [hasSearched, setHasSearched] = useState(false);
 
   // Agents for filter dropdown
-  const [agents, setAgents] = useState<Agent[]>([]);
-
-  useEffect(() => {
-    listAgents()
-      .then(setAgents)
-      .catch(() => {
-        /* agent list is optional for filter */
-      });
-  }, []);
+  const { agents } = useAgents();
 
   const loadSource = useCallback(async (id: string) => {
     setLoading(true);
@@ -148,143 +135,177 @@ export default function KnowledgePage() {
 
   return (
     <div className="kb-page">
-      {/* Source detail section */}
-      {sourceId && (
-        <div className="kb-detail-section">
-          {loading && <p className="list-placeholder">Loading source...</p>}
-          {error && <p className="form-error">{error}</p>}
-          {mutationError && <p className="form-error">{mutationError}</p>}
-          {source && (
-            <div className="kb-detail-card">
-              <div className="kb-detail-header">
-                <div className="kb-detail-header-left">
-                  <FolderOpen size={24} />
-                  <div>
-                    <h3 className="kb-detail-path">{source.path}</h3>
-                    <span className="kb-detail-created">
-                      Added {formatDate(source.created_at)}
+      {/* Top bar */}
+      <div className="page-top-bar">
+        <div className="page-top-bar-left">
+          <BookOpen size={20} />
+          <h2>知识库</h2>
+        </div>
+        <button className="btn-primary-pill">
+          <Plus size={16} /> 添加知识源
+        </button>
+      </div>
+
+      <div className="kb-body">
+        {/* Left column: Source detail */}
+        <div className="kb-sources-col">
+          <h3 className="kb-col-title">Knowledge Sources</h3>
+          {sourceId && (
+            <>
+              {loading && <p className="list-placeholder">Loading source...</p>}
+              {error && <p className="form-error">{error}</p>}
+              {mutationError && <p className="form-error">{mutationError}</p>}
+              {source && (
+                <div className="kb-detail-card">
+                  <div className="kb-detail-header">
+                    <div className="kb-detail-header-left">
+                      <FolderOpen size={24} />
+                      <div>
+                        <h3 className="kb-detail-path">{source.path}</h3>
+                        <span className="kb-detail-created">
+                          Added {formatDate(source.created_at)}
+                        </span>
+                      </div>
+                      <span
+                        className="kb-status-badge-lg"
+                        style={{ background: KB_STATUS_COLORS[source.status] }}
+                      >
+                        {source.status}
+                      </span>
+                    </div>
+                    <div className="agent-detail-actions">
+                      <button
+                        className="btn-icon"
+                        onClick={handleReindex}
+                        disabled={reindexing}
+                        title="Reindex source"
+                        aria-label="Reindex knowledge source"
+                      >
+                        <RefreshCw
+                          size={16}
+                          className={reindexing ? "spin" : ""}
+                        />
+                      </button>
+                      <button
+                        className="btn-icon btn-danger"
+                        onClick={handleDelete}
+                        title="Delete source"
+                        aria-label="Delete knowledge source"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="kb-detail-stats">
+                    <div className="kb-stat">
+                      <span className="kb-stat-value">{source.doc_count}</span>
+                      <span className="kb-stat-label">Documents</span>
+                    </div>
+                    <div className="kb-stat">
+                      <span className="kb-stat-value">{source.chunk_count}</span>
+                      <span className="kb-stat-label">Chunks</span>
+                    </div>
+                    <div className="kb-stat">
+                      <span className="kb-stat-value">{source.agent_id.slice(0, 8)}</span>
+                      <span className="kb-stat-label">Agent</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+          {!sourceId && (
+            <p className="list-placeholder">Select a knowledge source</p>
+          )}
+        </div>
+
+        {/* Right column: Search workbench */}
+        <div className="kb-search-col">
+          <h3 className="kb-col-title">Search Workbench</h3>
+          <div className="kb-search-bar">
+            <div className="kb-search-input-wrap">
+              <Search size={16} className="kb-search-icon" />
+              <input
+                type="text"
+                className="form-input kb-search-input"
+                placeholder="Search knowledge base..."
+                aria-label="Search knowledge base"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+              />
+            </div>
+            <select
+              className="form-input kb-agent-filter"
+              value={agentFilter}
+              onChange={(e) => setAgentFilter(e.target.value)}
+              aria-label="Filter by agent"
+            >
+              <option value="">All agents</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn-primary"
+              onClick={handleSearch}
+              disabled={searching || !searchQuery.trim()}
+              aria-label="Execute knowledge search"
+            >
+              {searching ? "Searching..." : "Search"}
+            </button>
+          </div>
+
+          {searchError && <p className="form-error">{searchError}</p>}
+
+          <div className="kb-results">
+            {!hasSearched && (
+              <div className="empty-state">
+                <p>Enter a query above to search the knowledge base.</p>
+              </div>
+            )}
+            {hasSearched && !searching && results.length === 0 && !searchError && (
+              <div className="empty-state">
+                <p>No results found.</p>
+              </div>
+            )}
+            {results.map((result) => {
+              const filename = result.source_path.split("/").pop() ?? result.source_path;
+              return (
+                <div key={result.chunk_id} className="kb-result-card">
+                  <div className="kb-result-header">
+                    <div className="kb-result-file-info">
+                      <FileText size={16} className="kb-result-file-icon" />
+                      <div>
+                        <span className="kb-result-filename">{filename}</span>
+                        <span className="kb-result-path" title={result.source_path}>
+                          {result.source_path}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="kb-result-score">
+                      {Math.round(result.score * 100)}%
                     </span>
                   </div>
-                  <span
-                    className="kb-status-badge-lg"
-                    style={{ background: KB_STATUS_COLORS[source.status] }}
-                  >
-                    {source.status}
-                  </span>
-                </div>
-                <div className="agent-detail-actions">
-                  <button
-                    className="btn-icon"
-                    onClick={handleReindex}
-                    disabled={reindexing}
-                    title="Reindex source"
-                    aria-label="Reindex knowledge source"
-                  >
-                    <RefreshCw
-                      size={16}
-                      className={reindexing ? "spin" : ""}
+                  <div className="kb-result-score-bar">
+                    <div
+                      className="kb-result-score-fill"
+                      style={{ width: `${Math.round(result.score * 100)}%` }}
                     />
-                  </button>
-                  <button
-                    className="btn-icon btn-danger"
-                    onClick={handleDelete}
-                    title="Delete source"
-                    aria-label="Delete knowledge source"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  </div>
+                  <p className="kb-result-content">{result.content}</p>
                 </div>
-              </div>
-              <div className="kb-detail-stats">
-                <div className="kb-stat">
-                  <span className="kb-stat-value">{source.doc_count}</span>
-                  <span className="kb-stat-label">Documents</span>
-                </div>
-                <div className="kb-stat">
-                  <span className="kb-stat-value">{source.chunk_count}</span>
-                  <span className="kb-stat-label">Chunks</span>
-                </div>
-                <div className="kb-stat">
-                  <span className="kb-stat-value">{source.agent_id.slice(0, 8)}</span>
-                  <span className="kb-stat-label">Agent</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Search workbench */}
-      <div className="kb-search-section">
-        <h3 className="kb-section-title">Knowledge Search</h3>
-        <div className="kb-search-bar">
-          <div className="kb-search-input-wrap">
-            <Search size={16} className="kb-search-icon" />
-            <input
-              type="text"
-              className="form-input kb-search-input"
-              placeholder="Search knowledge base..."
-              aria-label="Search knowledge base"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-            />
+              );
+            })}
           </div>
-          <select
-            className="form-input kb-agent-filter"
-            value={agentFilter}
-            onChange={(e) => setAgentFilter(e.target.value)}
-            aria-label="Filter by agent"
-          >
-            <option value="">All agents</option>
-            {agents.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-          <button
-            className="btn-primary"
-            onClick={handleSearch}
-            disabled={searching || !searchQuery.trim()}
-            aria-label="Execute knowledge search"
-          >
-            {searching ? "Searching..." : "Search"}
-          </button>
-        </div>
 
-        {searchError && <p className="form-error">{searchError}</p>}
-
-        <div className="kb-results">
-          {!hasSearched && (
-            <div className="empty-state">
-              <p>Enter a query above to search the knowledge base.</p>
-            </div>
-          )}
-          {hasSearched && !searching && results.length === 0 && !searchError && (
-            <div className="empty-state">
-              <p>No results found.</p>
-            </div>
-          )}
-          {results.map((result) => (
-            <div key={result.chunk_id} className="kb-result-card">
-              <div className="kb-result-header">
-                <span className="kb-result-source" title={result.source_path}>
-                  {result.source_path}
-                </span>
-                <span className="kb-result-score">
-                  {Math.round(result.score * 100)}%
-                </span>
-              </div>
-              <div className="kb-result-score-bar">
-                <div
-                  className="kb-result-score-fill"
-                  style={{ width: `${Math.round(result.score * 100)}%` }}
-                />
-              </div>
-              <p className="kb-result-content">{result.content}</p>
-            </div>
-          ))}
+          {/* Drag-and-drop zone */}
+          <div className="kb-drop-zone">
+            <Upload size={20} />
+            <span>Drag files here to add them to the knowledge base</span>
+          </div>
         </div>
       </div>
     </div>
