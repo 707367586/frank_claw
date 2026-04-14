@@ -1,0 +1,9 @@
+.skill-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; overflow: auto; padding-bottom: 16px; }
+.skill-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.skill-card__head { display: flex; align-items: center; gap: 10px; }
+.skill-card__icon { width: 28px; height: 28px; border-radius: 8px; background: var(--sidebar-accent); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; }
+.skill-card__name { font-size: 14px; font-weight: 600; color: var(--card-foreground); flex: 1; }
+.skill-card__desc { font-size: 12.5px; color: var(--muted-foreground); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.skill-card__meta { font-size: 11px; color: var(--muted-foreground); }
+.skill-card__actions { display: flex; gap: 8px; margin-top: auto; }
+.skill-card__actions .ui-btn { flex: 1; }
