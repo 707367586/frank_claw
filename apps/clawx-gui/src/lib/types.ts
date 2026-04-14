@@ -14,6 +14,7 @@ export interface Agent {
   role: string;
   system_prompt: string;
   model_id: string | null;
+  model?: string;
   status: "idle" | "working" | "error" | "offline";
   created_at: string;
   updated_at: string;
