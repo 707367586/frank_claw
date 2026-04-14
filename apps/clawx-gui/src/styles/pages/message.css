@@ -1,0 +1,20 @@
+.msg { display: flex; margin: 12px 0; }
+.msg--user { justify-content: flex-end; }
+.msg--assistant { justify-content: flex-start; }
+.msg__bubble {
+  max-width: 66%;
+  padding: 10px 14px;
+  font-size: 13.5px; line-height: 1.55;
+  border-radius: 14px;
+}
+.msg--user .msg__bubble { background: var(--primary); color: var(--primary-foreground); border-bottom-right-radius: 6px; }
+.msg--assistant .msg__bubble { background: transparent; color: var(--foreground); padding: 4px 0; max-width: 100%; }
+.msg--assistant .msg__bubble pre { background: var(--card); border: 1px solid var(--border); padding: 12px; border-radius: 8px; overflow: auto; font-size: 12px; }
+
+.src-refs { list-style: none; margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.src-ref { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.src-ref__head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-foreground); margin-bottom: 6px; }
+.src-ref__icon { color: var(--primary); }
+.src-ref__filename { color: var(--foreground); font-weight: 500; }
+.src-ref__range { margin-left: auto; }
+.src-ref__snippet { background: var(--background); padding: 8px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--foreground); white-space: pre-wrap; word-break: break-all; }

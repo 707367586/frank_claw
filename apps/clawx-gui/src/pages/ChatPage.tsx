@@ -332,7 +332,7 @@ export default function ChatPage() {
           </div>
 
           {/* Source References panel */}
-          <SourceReferences references={[]} />
+          <SourceReferences refs={[]} />
         </div>
       ) : (
         <ArtifactsPanel />

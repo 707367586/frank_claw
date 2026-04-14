@@ -1,5 +1,13 @@
 // ── Core entity types matching Rust backend ──
 
+export interface SourceRef {
+  id: string;
+  filename: string;
+  kind: "code" | "doc" | "text";
+  lineRange?: string;
+  snippet: string;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -25,6 +33,7 @@ export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   created_at: string;
+  refs?: SourceRef[];
 }
 
 export interface Memory {
