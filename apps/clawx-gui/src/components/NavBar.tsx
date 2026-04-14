@@ -1,69 +1,51 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  MessageSquare,
-  Users,
-  BookOpen,
-  CalendarClock,
-  Link,
-  Settings,
+  MessageSquare, Users, Bot, BookOpen, CalendarClock, Plug, Settings,
 } from "lucide-react";
+import IconButton from "./ui/IconButton";
+import Avatar from "./ui/Avatar";
 
 const navItems = [
-  { icon: MessageSquare, label: "Chat", path: "/" },
-  { icon: Users, label: "Agent & Skill", path: "/agents" },
-  { icon: BookOpen, label: "Knowledge", path: "/knowledge" },
-  { icon: CalendarClock, label: "Tasks", path: "/tasks" },
-  { icon: Link, label: "Connectors", path: "/connectors" },
+  { icon: MessageSquare, label: "对话", path: "/" },
+  { icon: Users,         label: "联系人", path: "/contacts" },
+  { icon: Bot,           label: "Agent & Skill", path: "/agents" },
+  { icon: BookOpen,      label: "知识库", path: "/knowledge" },
+  { icon: CalendarClock, label: "定时任务", path: "/tasks" },
+  { icon: Plug,          label: "渠道", path: "/connectors" },
 ];
 
 export default function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
-
-  function isActive(path: string) {
-    if (path === "/") return location.pathname === "/";
-    return location.pathname.startsWith(path);
-  }
+  const isActive = (p: string) => p === "/" ? location.pathname === "/" : location.pathname.startsWith(p);
 
   return (
-    <nav className="nav-bar" aria-label="Main navigation">
-      {/* Window controls placeholder (Tauri will render native ones) */}
-      <div className="nav-window-controls">
-        <span className="nav-dot nav-dot--close" />
-        <span className="nav-dot nav-dot--minimize" />
-        <span className="nav-dot nav-dot--maximize" />
+    <nav className="nav-rail" aria-label="Main navigation">
+      <div className="nav-rail__top">
+        <Avatar size={32} rounded="md" bg="var(--primary)">ZC</Avatar>
       </div>
-
-      {/* Avatar */}
-      <div className="nav-avatar-section">
-        <div className="nav-avatar">周</div>
-      </div>
-
-      {/* Main nav icons */}
-      <div className="nav-icons">
-        {navItems.map((item) => (
-          <button
-            key={item.path}
-            className={`nav-icon-btn ${isActive(item.path) ? "active" : ""}`}
-            onClick={() => navigate(item.path)}
-            title={item.label}
-            aria-label={item.label}
-          >
-            <item.icon size={20} />
-          </button>
+      <div className="nav-rail__items">
+        {navItems.map((it) => (
+          <IconButton
+            key={it.path}
+            icon={<it.icon size={18} />}
+            aria-label={it.label}
+            title={it.label}
+            onClick={() => navigate(it.path)}
+            variant="ghost"
+            className={isActive(it.path) ? "is-active" : ""}
+          />
         ))}
       </div>
-
-      {/* Bottom: Settings */}
-      <div className="nav-bottom">
-        <button
-          className={`nav-icon-btn ${isActive("/settings") ? "active" : ""}`}
+      <div className="nav-rail__bottom">
+        <IconButton
+          icon={<Settings size={18} />}
+          aria-label="设置"
+          title="设置"
           onClick={() => navigate("/settings")}
-          title="Settings"
-          aria-label="Settings"
-        >
-          <Settings size={20} />
-        </button>
+          variant="ghost"
+          className={isActive("/settings") ? "is-active" : ""}
+        />
       </div>
     </nav>
   );

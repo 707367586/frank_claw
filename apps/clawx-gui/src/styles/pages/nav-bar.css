@@ -1,0 +1,22 @@
+.nav-rail {
+  width: var(--nav-width);
+  background: var(--sidebar);
+  border-right: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.nav-rail__top,
+.nav-rail__bottom { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.nav-rail__items { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+.nav-rail .ui-icon-btn--ghost {
+  color: var(--sidebar-foreground);
+}
+.nav-rail .ui-icon-btn--ghost.is-active {
+  background: var(--sidebar-accent);
+  color: var(--foreground);
+}
