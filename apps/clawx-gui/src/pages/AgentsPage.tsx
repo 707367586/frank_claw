@@ -39,7 +39,7 @@ export default function AgentsPage() {
                 key={a.id}
                 agent={a}
                 onEnter={() => navigate(`/?agent=${a.id}`)}
-                onEdit={() => navigate(`/agents/${a.id}/edit`)}
+                onEdit={() => setOpenNew(true) /* TODO: open edit variant of AgentTemplateModal */}
               />
             ))}
           </div>
