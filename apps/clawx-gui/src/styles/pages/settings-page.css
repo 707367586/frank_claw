@@ -1,0 +1,29 @@
+.settings-page { display: grid; grid-template-columns: 200px 1fr; height: 100%; }
+.settings-page__main { padding: 20px 28px; overflow: auto; }
+.settings-page__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.settings-page__head h2 { font-size: 16px; font-weight: 700; }
+.settings-page__section-title { font-size: 15px; font-weight: 600; margin: 28px 0 12px; }
+.settings-page__providers { display: flex; flex-direction: column; gap: 10px; }
+.settings-page__placeholder { color: var(--muted-foreground); }
+
+.settings-nav { background: var(--sidebar); border-right: 1px solid var(--sidebar-border); padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; }
+.settings-nav__head { font-size: 15px; font-weight: 600; padding: 0 8px 8px; }
+.settings-nav ul { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.settings-nav__item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--sidebar-foreground); text-align: left; }
+.settings-nav__item:hover { background: var(--sidebar-accent); color: var(--foreground); }
+.settings-nav__item.is-active { background: var(--sidebar-accent); color: var(--foreground); }
+.settings-nav__divider { height: 1px; background: var(--sidebar-border); margin: 8px 0; }
+
+.mp-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.mp-card__head { display: flex; align-items: center; gap: 10px; }
+.mp-card__emoji { font-size: 20px; }
+.mp-card__name { font-size: 14px; font-weight: 600; flex: 1; }
+.mp-card__summary { font-size: 12px; color: var(--muted-foreground); }
+.mp-card__key code { background: var(--sidebar-accent); padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+.mp-card__actions { display: flex; gap: 6px; margin-top: 6px; }
+
+.mm-table { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.mm-table__head, .mm-table__row { display: grid; grid-template-columns: 1fr 1fr 1fr 48px; gap: 12px; padding: 10px 14px; align-items: center; }
+.mm-table__head { background: var(--sidebar-accent); font-size: 11px; color: var(--muted-foreground); font-weight: 500; text-transform: uppercase; }
+.mm-table__row { font-size: 13px; border-top: 1px solid var(--border); }
+.mm-table__row:first-child { border-top: 0; }
