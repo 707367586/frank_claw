@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   listMessages,
+  listModels,
   sendMessageStream,
   listConversations,
   createConversation,
 } from "../lib/api";
 import { useAgents } from "../lib/store";
-import type { Agent, Conversation, Message } from "../lib/types";
+import type { Agent, Conversation, Message, ModelProvider } from "../lib/types";
 import MessageBubble from "../components/MessageBubble";
 import ChatInput from "../components/ChatInput";
 import ChatWelcome from "../components/ChatWelcome";
@@ -33,6 +34,21 @@ export default function ChatPage() {
   // All agents list (from shared context)
   const { agents, loading: agentsLoading } = useAgents();
   const agentsLoaded = !agentsLoading;
+
+  // Providers list for resolving agent.model_id → provider.model_name
+  const [providers, setProviders] = useState<ModelProvider[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    listModels()
+      .then((p) => { if (!cancelled) setProviders(p); })
+      .catch(() => { /* silent; composer falls back to 未选择 */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const modelName = agent
+    ? providers.find((p) => p.id === agent.model_id)?.model_name
+    : undefined;
 
   const [activeTab, setActiveTab] = useState<"conversation" | "artifacts">("conversation");
 
@@ -307,7 +323,7 @@ export default function ChatPage() {
         </TabsContent>
 
         <footer className="chat-page__foot">
-          <ChatInput onSend={handleSend} disabled={isStreaming || loading} />
+          <ChatInput onSend={handleSend} disabled={isStreaming || loading} model={modelName} />
         </footer>
       </TabsRoot>
     </div>
