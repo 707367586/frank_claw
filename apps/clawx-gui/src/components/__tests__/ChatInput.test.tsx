@@ -23,4 +23,21 @@ describe("ChatInput", () => {
     expect(onSend).toHaveBeenCalledWith("你好");
     expect(field).toHaveValue("");
   });
+
+  it("does not call onSend when the input is only whitespace", async () => {
+    const onSend = vi.fn();
+    render(<ChatInput onSend={onSend} model="glm-4.6" />);
+    const field = screen.getByPlaceholderText("输入任何问题...");
+    await userEvent.type(field, "   {enter}");
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("does not call onSend when the composer is disabled", async () => {
+    const onSend = vi.fn();
+    render(<ChatInput onSend={onSend} model="glm-4.6" disabled />);
+    const field = screen.getByPlaceholderText("输入任何问题...");
+    // The input itself will be disabled, so userEvent may be a no-op; guard at submit() should still block.
+    await userEvent.type(field, "你好{enter}");
+    expect(onSend).not.toHaveBeenCalled();
+  });
 });
