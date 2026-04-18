@@ -8,5 +8,7 @@ export default defineConfig({
     globals: false,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    unstubGlobals: true,
+    unstubEnvs: true,
   },
 });
