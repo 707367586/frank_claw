@@ -80,16 +80,21 @@ describe("ChatPage model surface", () => {
     await waitFor(() => expect(screen.getByText("未选择")).toBeInTheDocument());
   });
 
+  // TODO: onDone should no-op after conversation changes — if the user
+  // navigates away mid-stream, onDone can fire after unmount/switch and
+  // overwrite the now-current conversation's messages. Follow-up: cancellation
+  // check before setMessages in refreshMessages / onDone path.
   it("appends streamed text to messages on stream done", async () => {
     const api = await import("../../lib/api");
 
-    // Until onDone fires, listMessages returns empty so pong-from-llm is NOT
-    // in the DOM yet. After the post-done refresh switch below, it returns
-    // the final conversation containing the assistant reply.
-    let streamDone = false;
+    // Until the server has persisted the assistant reply, listMessages returns
+    // empty so pong-from-llm is NOT in the DOM yet. After the post-done refresh
+    // switch below, it returns the final conversation containing the assistant
+    // reply.
+    let serverPersisted = false;
     (api.listMessages as any).mockReset();
     (api.listMessages as any).mockImplementation(async () =>
-      streamDone
+      serverPersisted
         ? [
             { id: "m1", conversation_id: "c1", role: "user", content: "ping", created_at: "" },
             { id: "m2", conversation_id: "c1", role: "assistant", content: "pong-from-llm", created_at: "" },
@@ -131,8 +136,11 @@ describe("ChatPage model surface", () => {
 
     // Flip the mock so the refresh triggered by onDone returns the final
     // assistant reply, then simulate SSE done.
-    streamDone = true;
+    serverPersisted = true;
     expect(capturedOnDone).toBeDefined();
+    // Contract: the assistant reply must not appear until onDone fires and
+    // the subsequent refresh completes.
+    expect(screen.queryByText("pong-from-llm")).not.toBeInTheDocument();
     capturedOnDone?.();
 
     await waitFor(() =>

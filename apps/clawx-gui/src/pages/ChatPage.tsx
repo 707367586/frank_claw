@@ -64,6 +64,16 @@ export default function ChatPage() {
     [],
   );
 
+  const refreshMessages = useCallback(async (id: string) => {
+    try {
+      const msgs = await listMessages(id);
+      setMessages(msgs);
+    } catch (e) {
+      console.error("Failed to refresh messages:", e);
+      setError("Failed to refresh messages. Please reload.");
+    }
+  }, []);
+
   // Resolve selected agent from agentId param
   useEffect(() => {
     if (!agentId || !agentsLoaded) return;
@@ -169,12 +179,7 @@ export default function ChatPage() {
           // Stream complete — refresh messages from server
           setIsStreaming(false);
           setStreamingContent("");
-          try {
-            const msgs = await listMessages(convId!);
-            setMessages(msgs);
-          } catch (e) {
-            console.error("Failed to refresh messages:", e);
-          }
+          await refreshMessages(convId!);
         },
         (err: Error) => {
           console.error("Stream error:", err);
@@ -184,7 +189,7 @@ export default function ChatPage() {
         },
       );
     },
-    [convId, isStreaming],
+    [convId, isStreaming, refreshMessages],
   );
 
   // Send from welcome page: create conversation first, then send
@@ -226,12 +231,7 @@ export default function ChatPage() {
             async () => {
               setIsStreaming(false);
               setStreamingContent("");
-              try {
-                const msgs = await listMessages(conv.id);
-                setMessages(msgs);
-              } catch (e) {
-                console.error("Failed to refresh messages:", e);
-              }
+              await refreshMessages(conv.id);
             },
             (err: Error) => {
               console.error("Stream error:", err);
@@ -245,7 +245,7 @@ export default function ChatPage() {
         setError(err instanceof Error ? err.message : "Failed to create conversation");
       }
     },
-    [agent, setSearchParams],
+    [agent, setSearchParams, refreshMessages],
   );
 
   // --- Routing logic ---
