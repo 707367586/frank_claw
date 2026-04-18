@@ -21,8 +21,8 @@ describe("AgentSidebar", () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(screen.getByText("编程助手")).toBeInTheDocument());
-    expect(screen.getByText("Idle")).toBeInTheDocument();
-    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.getByText("空闲")).toBeInTheDocument();
+    expect(screen.getByText("运行中")).toBeInTheDocument();
     expect(screen.queryByText(/pending/i)).toBeNull();
     expect(screen.queryByText(/2 pending/i)).toBeNull();
   });

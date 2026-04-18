@@ -9,10 +9,10 @@ import { useAgents } from "../lib/store";
 import type { Agent } from "../lib/types";
 
 const STATUS_DESC: Record<Agent["status"], string> = {
-  working: "Running",
-  idle:    "Idle",
-  error:   "Error",
-  offline: "Offline",
+  working: "运行中",
+  idle:    "空闲",
+  error:   "异常",
+  offline: "离线",
 };
 
 const EMOJI: Record<string, string> = {
