@@ -340,6 +340,10 @@ mod tests {
         let (status, _body) =
             request(&router, "GET", "/conversations", "test-token-123").await;
         assert_eq!(status, 200, "expected 200, got {}", status);
+
+        let list: Vec<serde_json::Value> =
+            serde_json::from_str(&_body).expect("body must be JSON array");
+        assert!(list.is_empty(), "expected empty list with no conversations seeded, got {:?}", list);
     }
 
     #[tokio::test]

@@ -49,61 +49,62 @@ pub async fn find_conversation_by_title(
     Ok(row.map(|(id,)| id))
 }
 
-/// List all conversations for a given agent, ordered by most recent first.
-pub async fn list_conversations(
-    pool: &SqlitePool,
-    agent_id: &str,
-) -> Result<Vec<serde_json::Value>> {
-    let rows: Vec<(String, String, Option<String>, String, String, String)> = sqlx::query_as(
-        "SELECT id, agent_id, title, status, created_at, updated_at
-         FROM conversations
-         WHERE agent_id = ?
-         ORDER BY created_at DESC",
-    )
-    .bind(agent_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| ClawxError::Database(format!("list conversations: {}", e)))?;
-
-    Ok(rows
-        .into_iter()
-        .map(|(id, agent_id, title, status, created_at, updated_at)| {
-            serde_json::json!({
-                "id": id,
-                "agent_id": agent_id,
-                "title": title,
-                "status": status,
-                "created_at": created_at,
-                "updated_at": updated_at,
-            })
-        })
-        .collect())
+/// Shape a conversation row (as fetched by `list_conversations`) into JSON.
+fn conversation_row_to_json(
+    (id, agent_id, title, status, created_at, updated_at): (
+        String,
+        String,
+        Option<String>,
+        String,
+        String,
+        String,
+    ),
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "agent_id": agent_id,
+        "title": title,
+        "status": status,
+        "created_at": created_at,
+        "updated_at": updated_at,
+    })
 }
 
-/// List all conversations across all agents, ordered by most recent first.
-pub async fn list_all_conversations(pool: &SqlitePool) -> Result<Vec<serde_json::Value>> {
-    let rows: Vec<(String, String, Option<String>, String, String, String)> = sqlx::query_as(
-        "SELECT id, agent_id, title, status, created_at, updated_at
-         FROM conversations
-         ORDER BY created_at DESC",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| ClawxError::Database(format!("list all conversations: {}", e)))?;
+/// List conversations ordered by most recent first.
+///
+/// When `agent_id` is `Some`, restrict to conversations belonging to that
+/// agent. When `None`, return every conversation across all agents.
+///
+/// Ordering is stable via `(created_at DESC, id DESC)` — the `id` tiebreaker
+/// ensures deterministic output when two rows share a timestamp.
+pub async fn list_conversations(
+    pool: &SqlitePool,
+    agent_id: Option<&str>,
+) -> Result<Vec<serde_json::Value>> {
+    type Row = (String, String, Option<String>, String, String, String);
 
-    Ok(rows
-        .into_iter()
-        .map(|(id, agent_id, title, status, created_at, updated_at)| {
-            serde_json::json!({
-                "id": id,
-                "agent_id": agent_id,
-                "title": title,
-                "status": status,
-                "created_at": created_at,
-                "updated_at": updated_at,
-            })
-        })
-        .collect())
+    let rows: Vec<Row> = match agent_id {
+        Some(id) => sqlx::query_as(
+            "SELECT id, agent_id, title, status, created_at, updated_at
+             FROM conversations
+             WHERE agent_id = ?
+             ORDER BY created_at DESC, id DESC",
+        )
+        .bind(id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| ClawxError::Database(format!("list conversations: {}", e)))?,
+        None => sqlx::query_as(
+            "SELECT id, agent_id, title, status, created_at, updated_at
+             FROM conversations
+             ORDER BY created_at DESC, id DESC",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| ClawxError::Database(format!("list conversations: {}", e)))?,
+    };
+
+    Ok(rows.into_iter().map(conversation_row_to_json).collect())
 }
 
 /// Get a single conversation by ID.
@@ -285,7 +286,7 @@ mod tests {
         create_conversation(&db.main, &agent_id, Some("First")).await.unwrap();
         create_conversation(&db.main, &agent_id, Some("Second")).await.unwrap();
 
-        let convs = list_conversations(&db.main, &agent_id).await.unwrap();
+        let convs = list_conversations(&db.main, Some(&agent_id)).await.unwrap();
         assert_eq!(convs.len(), 2);
     }
 
@@ -300,9 +301,86 @@ mod tests {
         create_conversation(&db.main, &agent_a, Some("A's conv")).await.unwrap();
         create_conversation(&db.main, &agent_b, Some("B's conv")).await.unwrap();
 
-        let convs_a = list_conversations(&db.main, &agent_a).await.unwrap();
+        let convs_a = list_conversations(&db.main, Some(&agent_a)).await.unwrap();
         assert_eq!(convs_a.len(), 1);
         assert_eq!(convs_a[0]["title"], "A's conv");
+    }
+
+    #[tokio::test]
+    async fn list_conversations_all_agents_returns_unfiltered() {
+        let db = Database::in_memory().await.unwrap();
+        let agent_a = Uuid::new_v4().to_string();
+        let agent_b = Uuid::new_v4().to_string();
+        seed_agent(&db.main, &agent_a).await;
+        seed_agent(&db.main, &agent_b).await;
+
+        let older = create_conversation(&db.main, &agent_a, Some("A's conv"))
+            .await
+            .unwrap();
+        // Small delay so the second row's created_at is strictly greater.
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        let newer = create_conversation(&db.main, &agent_b, Some("B's conv"))
+            .await
+            .unwrap();
+
+        let convs = list_conversations(&db.main, None).await.unwrap();
+        assert_eq!(convs.len(), 2, "expected both conversations, got {:?}", convs);
+
+        // Newest-first: B's conv should come before A's conv.
+        assert_eq!(convs[0]["id"], newer);
+        assert_eq!(convs[1]["id"], older);
+
+        // Both agents are represented.
+        let titles: Vec<&str> = convs
+            .iter()
+            .map(|c| c["title"].as_str().unwrap_or_default())
+            .collect();
+        assert!(titles.contains(&"A's conv"));
+        assert!(titles.contains(&"B's conv"));
+    }
+
+    #[tokio::test]
+    async fn list_conversations_stable_tiebreak() {
+        // When two rows share created_at, `ORDER BY created_at DESC, id DESC`
+        // must still produce a deterministic ordering.
+        let db = Database::in_memory().await.unwrap();
+        let agent_id = Uuid::new_v4().to_string();
+        seed_agent(&db.main, &agent_id).await;
+
+        // Insert rows with IDENTICAL created_at so the timestamp cannot
+        // distinguish them. The id tiebreaker must take over.
+        let now = Utc::now().to_rfc3339();
+        for _ in 0..5 {
+            let id = Uuid::new_v4().to_string();
+            sqlx::query(
+                "INSERT INTO conversations
+                 (id, agent_id, title, status, created_at, updated_at)
+                 VALUES (?, ?, 'dup', 'active', ?, ?)",
+            )
+            .bind(&id)
+            .bind(&agent_id)
+            .bind(&now)
+            .bind(&now)
+            .execute(&db.main)
+            .await
+            .unwrap();
+        }
+
+        let first = list_conversations(&db.main, Some(&agent_id)).await.unwrap();
+        let second = list_conversations(&db.main, Some(&agent_id)).await.unwrap();
+        let third = list_conversations(&db.main, None).await.unwrap();
+
+        // Same query twice must yield byte-identical ordering.
+        let ids_first: Vec<&str> = first.iter().map(|c| c["id"].as_str().unwrap()).collect();
+        let ids_second: Vec<&str> = second.iter().map(|c| c["id"].as_str().unwrap()).collect();
+        let ids_third: Vec<&str> = third.iter().map(|c| c["id"].as_str().unwrap()).collect();
+        assert_eq!(ids_first, ids_second, "filtered ordering must be stable");
+        assert_eq!(ids_first, ids_third, "filtered and unfiltered orderings must agree when only one agent exists");
+
+        // Verify the explicit `id DESC` tiebreaker actually took effect.
+        let mut sorted = ids_first.clone();
+        sorted.sort_by(|a, b| b.cmp(a));
+        assert_eq!(ids_first, sorted, "tiebreaker must be id DESC");
     }
 
     #[tokio::test]
