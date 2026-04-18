@@ -3,7 +3,7 @@ import Dialog from "./ui/Dialog";
 import Input from "./ui/Input";
 import Select from "./ui/Select";
 import Button from "./ui/Button";
-import { createModel } from "../lib/api";
+import { createModel, updateModel } from "../lib/api";
 import type { ModelProvider } from "../lib/types";
 
 type ProviderType = ModelProvider["provider_type"];
@@ -50,10 +50,11 @@ const TYPE_OPTIONS = (Object.keys(PRESETS) as ProviderType[]).map((k) => ({
 interface Props {
   open: boolean;
   onClose: () => void;
-  onCreated: (provider: ModelProvider) => void;
+  onSaved: (provider: ModelProvider) => void;
+  initial?: ModelProvider;
 }
 
-export default function AddProviderModal({ open, onClose, onCreated }: Props) {
+export default function AddProviderModal({ open, onClose, onSaved, initial }: Props) {
   const [type, setType] = useState<ProviderType>("zhipu");
   const [name, setName] = useState("智谱 AI");
   const [baseUrl, setBaseUrl] = useState(PRESETS.zhipu.base_url);
@@ -63,18 +64,28 @@ export default function AddProviderModal({ open, onClose, onCreated }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset to defaults whenever the modal opens.
+  // Reset to defaults (or prefill from `initial`) whenever the modal opens.
   useEffect(() => {
     if (!open) return;
-    setType("zhipu");
-    setName(PRESETS.zhipu.label);
-    setBaseUrl(PRESETS.zhipu.base_url);
-    setModelName(PRESETS.zhipu.default_model);
-    setApiKey("");
-    setIsDefault(false);
+    if (initial) {
+      setType(initial.provider_type);
+      setName(initial.name);
+      setBaseUrl(initial.base_url);
+      setModelName(initial.model_name);
+      const params = (initial.parameters ?? {}) as { api_key?: string };
+      setApiKey(typeof params.api_key === "string" ? params.api_key : "");
+      setIsDefault(initial.is_default);
+    } else {
+      setType("zhipu");
+      setName(PRESETS.zhipu.label);
+      setBaseUrl(PRESETS.zhipu.base_url);
+      setModelName(PRESETS.zhipu.default_model);
+      setApiKey("");
+      setIsDefault(false);
+    }
     setError(null);
     setSubmitting(false);
-  }, [open]);
+  }, [open, initial]);
 
   const handleTypeChange = (next: ProviderType) => {
     const preset = PRESETS[next];
@@ -95,18 +106,21 @@ export default function AddProviderModal({ open, onClose, onCreated }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      const created = await createModel({
+      const payload = {
         name: name.trim(),
         provider_type: type,
         base_url: baseUrl.trim(),
         model_name: modelName.trim(),
         parameters: apiKey.trim() ? { api_key: apiKey.trim() } : {},
         is_default: isDefault,
-      });
-      onCreated(created);
+      };
+      const saved = initial
+        ? await updateModel(initial.id, payload)
+        : await createModel(payload);
+      onSaved(saved);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "创建失败");
+      setError(err instanceof Error ? err.message : "保存失败");
     } finally {
       setSubmitting(false);
     }
@@ -117,7 +131,7 @@ export default function AddProviderModal({ open, onClose, onCreated }: Props) {
   return (
     <Dialog open={open} onClose={onClose} width={520}>
       <header className="agent-template__head">
-        <h2>添加模型 Provider</h2>
+        <h2>{initial ? "编辑模型 Provider" : "添加模型 Provider"}</h2>
         <p>配置一个新的 LLM 服务端，保存后需重启服务进程生效。</p>
       </header>
 

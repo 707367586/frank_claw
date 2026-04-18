@@ -18,10 +18,11 @@ function maskKey(raw: string): string {
 interface Props {
   provider: ModelProvider;
   onDelete?: (id: string) => void;
+  onEdit?: (provider: ModelProvider) => void;
   busy?: boolean;
 }
 
-export default function ModelProviderCard({ provider, onDelete, busy }: Props) {
+export default function ModelProviderCard({ provider, onDelete, onEdit, busy }: Props) {
   const params = (provider.parameters ?? {}) as { api_key?: string };
   const apiKey = typeof params.api_key === "string" ? params.api_key : "";
   const available = provider.provider_type === "ollama"
@@ -50,6 +51,14 @@ export default function ModelProviderCard({ provider, onDelete, busy }: Props) {
         </div>
       )}
       <div className="mp-card__actions">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onEdit?.(provider)}
+          disabled={busy}
+        >
+          编辑
+        </Button>
         <Button
           size="sm"
           variant="ghost"

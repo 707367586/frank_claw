@@ -333,6 +333,16 @@ export function deleteModel(id: string): Promise<void> {
   });
 }
 
+export function updateModel(
+  id: string,
+  data: Partial<Omit<ModelProvider, "id" | "created_at" | "updated_at">>,
+): Promise<ModelProvider> {
+  return fetchApi(`/models/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 // ── System ──
 
 export function getHealth(): Promise<SystemHealth> {

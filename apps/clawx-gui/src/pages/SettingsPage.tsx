@@ -14,6 +14,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<ModelProvider | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -79,6 +80,10 @@ export default function SettingsPage() {
                 <ModelProviderCard
                   key={p.id}
                   provider={p}
+                  onEdit={(prov) => {
+                    setEditing(prov);
+                    setModalOpen(true);
+                  }}
                   onDelete={handleDelete}
                   busy={deletingId === p.id}
                 />
@@ -90,8 +95,20 @@ export default function SettingsPage() {
 
             <AddProviderModal
               open={modalOpen}
-              onClose={() => setModalOpen(false)}
-              onCreated={(p) => setProviders((prev) => [p, ...prev])}
+              initial={editing ?? undefined}
+              onClose={() => {
+                setModalOpen(false);
+                setEditing(null);
+              }}
+              onSaved={(p) => {
+                setProviders((prev) => {
+                  const exists = prev.some((x) => x.id === p.id);
+                  return exists
+                    ? prev.map((x) => (x.id === p.id ? p : x))
+                    : [p, ...prev];
+                });
+                setEditing(null);
+              }}
             />
           </>
         )}

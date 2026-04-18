@@ -21,6 +21,26 @@ describe("api base url", () => {
       expect.any(Object),
     );
   });
+
+  it("updateModel PUTs to /models/:id with partial payload", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "p1" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { updateModel } = await import("../api");
+    await updateModel("p1", { parameters: { api_key: "k" } });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:9090/models/p1",
+      expect.objectContaining({ method: "PUT" }),
+    );
+    const call = fetchMock.mock.calls[0];
+    expect(JSON.parse(call[1].body as string)).toEqual({
+      parameters: { api_key: "k" },
+    });
+  });
 });
 
 describe("env isolation", () => {
