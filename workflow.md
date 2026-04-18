@@ -98,3 +98,46 @@ git commit -m "feat: add memory hub trait definitions"
 - Make architectural decisions without logging them
 - Commit `.env`, secrets, or credentials
 - Send data externally without explicit user consent
+
+---
+
+## 2026-04-18 首页端到端对话计划执行记录
+
+Plan: `docs/superpowers/plans/2026-04-18-home-page-end-to-end-chat.md`
+Branch: `feature/home-page-e2e-chat` (11 tasks, 13 commits including baseline + review-driven follow-ups)
+
+### 完成概览
+
+| Task | 目标 | 代表 commit |
+|------|------|-------------|
+| T1 | Vitest + RTL 测试框架 | `c45f730` |
+| T2 | BASE_URL 默认 127.0.0.1（含 stubGlobals/stubEnvs 防泄漏）| `5f547a6` → `3630384` |
+| T3 | `GET /conversations` 支持无 agent_id（并去重两个 list 函数 + id DESC tiebreak）| `40d50ed` → `9f7da59` |
+| T4 | ChatWelcome 按选中 Agent 渲染（setup.ts 提取 cleanup + subtitle truncate/…）| `e3694af` → `a44824c` |
+| T5 | ChatInput 去掉 Sonnet 4.6 硬编码，空值显示"未选择"（守卫 guard 补强测试）| `a92d215` → `78d337f` |
+| T6 | ChatPage 透传 agent.model_name（scrollIntoView stub 提到 setup.ts；loading/dangling 测试）| `15faf18` → `c0b9ca6` |
+| T7 | SSE 去占位符 + 真累积 delta（mid-stream error 不落库 + 持久化失败 tracing::error）| `e9326e6` → `5c6ce64` |
+| T8 | 流结束刷新 messages（onDone 改 async/await + setError 一致化 + refreshMessages helper）| `e09ced1` → `f6ffe8f` |
+| T9 | AgentSidebar 去掉假 "2 pending" + 本地化为中文 | `98817b4` → `f4fb8cc` |
+| T10 | Provider 编辑 UI（updateModel API + AddProviderModal.initial + ModelProviderCard onEdit）| `b95ea4f` |
+| T11 | 端到端冒烟 | 本提交 |
+
+每个 task 走 subagent 驱动的 implementer → spec review → code-quality review → fix → re-review 循环，合计 5+ 轮 per task。
+
+### 验证命令
+
+```
+cargo test --workspace       # 所有 Rust 测试全绿（含新增 3 个 SSE 测试）
+cd apps/clawx-gui && npm test  # 6 文件 18 tests 全绿
+cd apps/clawx-gui && npx tsc -b  # 类型干净
+```
+
+### 手工 walkthrough（交给用户）
+
+1. 左侧栏不再出现 `Load failed`；默认 Agent 列表显示带中文状态（空闲/运行中）。
+2. 设置 → 模型 Provider：既有智谱条目点"编辑"→填真实 API Key→保存。
+3. 重启 `clawx-service`（router 只在启动时读 DB）。
+4. Agents → 新建 Agent：Provider 下拉能看到那条智谱，选中→创建。
+5. 回首页点该 Agent → 欢迎页显示 Agent 真名 + 自定义 subtitle；底部 composer 显示 `glm-4.6`（或所填模型名）。
+6. 点击建议卡片 → 自动创建对话 → SSE 流入真实文本 → done 后持久化落库。
+7. 刷新/重开窗口，历史消息保留。
