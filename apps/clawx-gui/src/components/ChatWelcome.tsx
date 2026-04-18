@@ -10,6 +10,8 @@ const SUGGESTIONS = [
   { icon: Search, text: "研究并汇总行业最新动态" },
 ];
 
+const truncate = (s: string, n = 80) => (s.length > n ? `${s.slice(0, n)}…` : s);
+
 interface Props {
   agent?: Agent;
   onSend?: (t: string) => void | Promise<void>;
@@ -17,8 +19,10 @@ interface Props {
 
 export default function ChatWelcome({ agent, onSend }: Props) {
   const title = agent?.name ?? "ClawX";
-  const subtitle = agent?.system_prompt?.slice(0, 80)
-    || "选中一个 Agent 开始对话，或在下方输入问题。";
+  const rawPrompt = agent?.system_prompt?.trim();
+  const subtitle = rawPrompt
+    ? truncate(rawPrompt)
+    : "选中一个 Agent 开始对话，或在下方输入问题。";
 
   const handleSuggest = async (text: string) => {
     if (onSend) await onSend(text);
