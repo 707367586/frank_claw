@@ -148,3 +148,77 @@ describe("ChatPage model surface", () => {
     );
   });
 });
+
+describe("ChatPage welcome-page send", () => {
+  it("streams delta events into the UI when sending from the welcome page", async () => {
+    const api = await import("../../lib/api");
+
+    // listConversations empty at mount; createConversation returns a new one; listMessages returns empty initially then final
+    (api.listConversations as any).mockReset();
+    (api.listConversations as any).mockResolvedValue([]);
+
+    (api.createConversation as any).mockReset();
+    (api.createConversation as any).mockResolvedValue({
+      id: "c-new", agent_id: "a1", title: "", created_at: "", updated_at: "",
+    });
+
+    (api.listMessages as any).mockReset();
+    let serverFlushed = false;
+    (api.listMessages as any).mockImplementation(async () => {
+      if (!serverFlushed) return [];
+      return [
+        { id: "m1", conversation_id: "c-new", role: "user", content: "对话", created_at: "" },
+        { id: "m2", conversation_id: "c-new", role: "assistant", content: "Hello world!", created_at: "" },
+      ];
+    });
+
+    // Capture the stream callbacks so we can drive them
+    let capturedOnMessage: ((data: string) => void) | undefined;
+    let capturedOnDone: (() => void) | undefined;
+    (api.sendMessageStream as any).mockReset();
+    (api.sendMessageStream as any).mockImplementation(
+      (_c: string, _msg: string, onMessage: any, onDone: any) => {
+        capturedOnMessage = onMessage;
+        capturedOnDone = onDone;
+        return new AbortController();
+      },
+    );
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/?agent=a1"]}>
+        <AgentProvider>
+          <Routes>
+            <Route path="/" element={<ChatPage />} />
+          </Routes>
+        </AgentProvider>
+      </MemoryRouter>,
+    );
+
+    // wait for welcome screen to appear (agent loaded)
+    const chip = await screen.findByRole("button", { name: "对话" });
+
+    // click suggestion chip → triggers createConversation + sendMessageStream
+    await user.click(chip);
+
+    await waitFor(() => expect(capturedOnMessage).toBeDefined());
+
+    // simulate backend sending delta payloads (the actual wire format)
+    capturedOnMessage!(JSON.stringify({ delta: "Hello " }));
+    capturedOnMessage!(JSON.stringify({ delta: "world!" }));
+
+    // delta text should appear streamed in the UI
+    await waitFor(() =>
+      expect(screen.getByText("Hello world!")).toBeInTheDocument(),
+    );
+
+    // simulate done → backend has persisted real assistant message
+    serverFlushed = true;
+    capturedOnDone?.();
+
+    // final message rendered via listMessages refresh
+    await waitFor(() =>
+      expect(screen.getAllByText("Hello world!").length).toBeGreaterThan(0),
+    );
+  });
+});

@@ -54,6 +54,12 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // When the welcome flow creates a conversation + starts a stream in one go,
+  // the convId URL param flips null → new-id and would otherwise trigger the
+  // load-messages effect below, aborting our just-started stream. This ref
+  // records the conv id we're mid-stream into so the effect can skip itself
+  // for that transition only.
+  const streamingConvRef = useRef<string | null>(null);
 
   const scrollToBottom = useCallback(
     (instant = false) => {
@@ -83,6 +89,15 @@ export default function ChatPage() {
 
   // Load messages when conversation changes
   useEffect(() => {
+    // Skip the reset/fetch if we just started streaming into this conv ourselves
+    // (welcome-flow: createConversation → setSearchParams → stream). Clearing the
+    // ref here guarantees the *next* convId change (real navigation) still
+    // aborts and reloads as expected.
+    if (convId && streamingConvRef.current === convId) {
+      streamingConvRef.current = null;
+      return;
+    }
+
     // Abort any active stream when conversation changes
     abortRef.current?.abort();
     abortRef.current = null;
@@ -144,16 +159,13 @@ export default function ChatPage() {
     };
   }, []);
 
-  const handleSend = useCallback(
-    (content: string) => {
-      if (!convId || isStreaming) return;
-
-      // Optimistically add user message
+  const streamToConversation = useCallback(
+    (convId: string, userText: string) => {
       const userMsg: Message = {
         id: `temp-${Date.now()}`,
         conversation_id: convId,
         role: "user",
-        content,
+        content: userText,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, userMsg]);
@@ -162,7 +174,7 @@ export default function ChatPage() {
 
       abortRef.current = sendMessageStream(
         convId,
-        content,
+        userText,
         (data: string) => {
           try {
             const parsed = JSON.parse(data) as { delta?: string; content?: string };
@@ -171,15 +183,13 @@ export default function ChatPage() {
               setStreamingContent((prev) => prev + text);
             }
           } catch {
-            // If it's plain text, append directly
             setStreamingContent((prev) => prev + data);
           }
         },
         async () => {
-          // Stream complete — refresh messages from server
           setIsStreaming(false);
           setStreamingContent("");
-          await refreshMessages(convId!);
+          await refreshMessages(convId);
         },
         (err: Error) => {
           console.error("Stream error:", err);
@@ -189,63 +199,35 @@ export default function ChatPage() {
         },
       );
     },
-    [convId, isStreaming, refreshMessages],
+    [refreshMessages],
+  );
+
+  const handleSend = useCallback(
+    (content: string) => {
+      if (!convId || isStreaming) return;
+      streamToConversation(convId, content);
+    },
+    [convId, isStreaming, streamToConversation],
   );
 
   // Send from welcome page: create conversation first, then send
   const handleWelcomeSend = useCallback(
     async (content: string) => {
-      if (!agent) return;
+      if (!agent || isStreaming) return;
       try {
         const conv = await createConversation(agent.id);
         setConversation(conv);
-        // Navigate to the new conversation
+        // Mark this conv as already-streaming so the URL param change below
+        // does not retrigger the load-messages effect (which would abort our
+        // stream). The effect clears the ref when it observes the match.
+        streamingConvRef.current = conv.id;
         setSearchParams({ conv: conv.id });
-        // Small delay to let state settle, then send
-        setTimeout(() => {
-          // We need to send after convId is set; using the conv.id directly
-          const userMsg: Message = {
-            id: `temp-${Date.now()}`,
-            conversation_id: conv.id,
-            role: "user",
-            content,
-            created_at: new Date().toISOString(),
-          };
-          setMessages([userMsg]);
-          setIsStreaming(true);
-          setStreamingContent("");
-
-          abortRef.current = sendMessageStream(
-            conv.id,
-            content,
-            (data: string) => {
-              try {
-                const parsed = JSON.parse(data) as { content?: string };
-                if (parsed.content) {
-                  setStreamingContent((prev) => prev + parsed.content);
-                }
-              } catch {
-                setStreamingContent((prev) => prev + data);
-              }
-            },
-            async () => {
-              setIsStreaming(false);
-              setStreamingContent("");
-              await refreshMessages(conv.id);
-            },
-            (err: Error) => {
-              console.error("Stream error:", err);
-              setIsStreaming(false);
-              setStreamingContent("");
-              setError("Failed to send message. Please try again.");
-            },
-          );
-        }, 50);
+        streamToConversation(conv.id, content);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to create conversation");
       }
     },
-    [agent, setSearchParams, refreshMessages],
+    [agent, isStreaming, setSearchParams, streamToConversation],
   );
 
   // --- Routing logic ---
