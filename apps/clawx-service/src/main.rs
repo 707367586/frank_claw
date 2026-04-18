@@ -47,8 +47,13 @@ async fn main() -> Result<()> {
     let db = clawx_runtime::db::Database::init(&config).await?;
     tracing::info!("database initialized");
 
+    // 5b. Seed default LLM provider + Agents on first launch.
+    if let Err(e) = clawx_runtime::seed::seed_defaults_if_empty(&db.main).await {
+        tracing::warn!("default seed failed (non-fatal): {}", e);
+    }
+
     // 6. Assemble runtime (composition root) with real implementations
-    let llm = build_llm_router();
+    let llm = build_llm_router(&db).await;
     let memory = Arc::new(clawx_memory::SqliteMemoryService::new(db.main.clone()));
     let vault = Arc::new(clawx_vault::SqliteVaultService::new(db.vault.clone()));
     let knowledge = {
@@ -277,9 +282,21 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Build the LLM router with providers from environment variables.
-/// Falls back to StubLlmProvider when no API keys are configured.
-fn build_llm_router() -> Arc<dyn clawx_types::traits::LlmProvider> {
+/// Build the LLM router.
+///
+/// Provider keys (`anthropic` / `openai` / `zhipu`) are populated from, in
+/// priority order:
+///   1. Environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ZHIPU_API_KEY`)
+///   2. Rows in the `llm_providers` table whose `parameters.api_key` is set.
+/// The first DB row per type wins; DB entries override env values.
+///
+/// Falls back to `StubLlmProvider` when no credentials are available.
+async fn build_llm_router(
+    db: &clawx_runtime::db::Database,
+) -> Arc<dyn clawx_types::traits::LlmProvider> {
+    use clawx_types::llm::ProviderType;
+    let pool = &db.main;
+
     let mut providers: HashMap<String, Arc<dyn clawx_types::traits::LlmProvider>> = HashMap::new();
 
     // Always register the stub as fallback
@@ -288,7 +305,7 @@ fn build_llm_router() -> Arc<dyn clawx_types::traits::LlmProvider> {
         Arc::new(clawx_llm::StubLlmProvider),
     );
 
-    // Anthropic provider (if API key is set)
+    // ── Env-var based registration (kept for backwards compatibility) ──
     if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
         let base_url = std::env::var("ANTHROPIC_BASE_URL")
             .unwrap_or_else(|_| "https://api.anthropic.com".to_string());
@@ -296,10 +313,9 @@ fn build_llm_router() -> Arc<dyn clawx_types::traits::LlmProvider> {
             "anthropic".to_string(),
             Arc::new(clawx_llm::AnthropicProvider::new(api_key, base_url)),
         );
-        tracing::info!("registered Anthropic LLM provider");
+        tracing::info!("registered Anthropic LLM provider (env)");
     }
 
-    // OpenAI provider (if API key is set)
     if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
         let base_url = std::env::var("OPENAI_BASE_URL")
             .unwrap_or_else(|_| "https://api.openai.com".to_string());
@@ -307,10 +323,9 @@ fn build_llm_router() -> Arc<dyn clawx_types::traits::LlmProvider> {
             "openai".to_string(),
             Arc::new(clawx_llm::OpenAiProvider::new(api_key, base_url)),
         );
-        tracing::info!("registered OpenAI LLM provider");
+        tracing::info!("registered OpenAI LLM provider (env)");
     }
 
-    // ZhipuAI provider (if API key is set)
     if let Ok(api_key) = std::env::var("ZHIPU_API_KEY") {
         let base_url = std::env::var("ZHIPU_BASE_URL")
             .unwrap_or_else(|_| "https://open.bigmodel.cn/api/paas/v4".to_string());
@@ -318,7 +333,68 @@ fn build_llm_router() -> Arc<dyn clawx_types::traits::LlmProvider> {
             "zhipu".to_string(),
             Arc::new(clawx_llm::ZhipuProvider::new(api_key, base_url)),
         );
-        tracing::info!("registered ZhipuAI LLM provider");
+        tracing::info!("registered ZhipuAI LLM provider (env)");
+    }
+
+    // ── DB-backed registration: loads any provider configs whose parameters.api_key is set.
+    match clawx_runtime::model_repo::list_providers(pool).await {
+        Ok(configs) => {
+            for cfg in configs {
+                let Some(api_key) = cfg
+                    .parameters
+                    .get("api_key")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                else {
+                    continue;
+                };
+                let key = api_key.to_string();
+                match cfg.provider_type {
+                    ProviderType::Anthropic => {
+                        let base = if cfg.base_url.is_empty() {
+                            "https://api.anthropic.com".to_string()
+                        } else {
+                            cfg.base_url.clone()
+                        };
+                        providers.insert(
+                            "anthropic".to_string(),
+                            Arc::new(clawx_llm::AnthropicProvider::new(key, base)),
+                        );
+                        tracing::info!(name = %cfg.name, "registered Anthropic LLM provider (db)");
+                    }
+                    ProviderType::Openai => {
+                        let base = if cfg.base_url.is_empty() {
+                            "https://api.openai.com".to_string()
+                        } else {
+                            cfg.base_url.clone()
+                        };
+                        providers.insert(
+                            "openai".to_string(),
+                            Arc::new(clawx_llm::OpenAiProvider::new(key, base)),
+                        );
+                        tracing::info!(name = %cfg.name, "registered OpenAI LLM provider (db)");
+                    }
+                    ProviderType::Zhipu => {
+                        let base = if cfg.base_url.is_empty() {
+                            "https://open.bigmodel.cn/api/paas/v4".to_string()
+                        } else {
+                            cfg.base_url.clone()
+                        };
+                        providers.insert(
+                            "zhipu".to_string(),
+                            Arc::new(clawx_llm::ZhipuProvider::new(key, base)),
+                        );
+                        tracing::info!(name = %cfg.name, "registered ZhipuAI LLM provider (db)");
+                    }
+                    ProviderType::Ollama | ProviderType::Custom => {
+                        // Not yet wired — ignored.
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!("failed to load provider configs from DB (non-fatal): {}", e);
+        }
     }
 
     // Use first real provider as default, fall back to stub

@@ -19,6 +19,7 @@ pub mod permission_repo;
 pub mod skill_loader;
 pub mod skill_repo;
 pub mod run_recovery;
+pub mod seed;
 pub mod task_repo;
 
 use std::sync::Arc;

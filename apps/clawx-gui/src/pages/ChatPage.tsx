@@ -11,7 +11,6 @@ import type { Agent, Conversation, Message } from "../lib/types";
 import MessageBubble from "../components/MessageBubble";
 import ChatInput from "../components/ChatInput";
 import ChatWelcome from "../components/ChatWelcome";
-import EmptyState from "../components/EmptyState";
 import SourceReferences from "../components/SourceReferences";
 import ArtifactsPanel from "../components/ArtifactsPanel";
 import { TabsRoot, TabsList, TabsTrigger, TabsContent } from "../components/ui/Tabs";
@@ -240,20 +239,6 @@ export default function ChatPage() {
     );
   }
 
-  // No agents exist → show first-time empty state
-  if (agents.length === 0) {
-    return (
-      <EmptyState
-        onCreateFromTemplate={() => {
-          // TODO: navigate to agent creation from template
-        }}
-        onCreateCustom={() => {
-          // TODO: navigate to agent creation
-        }}
-      />
-    );
-  }
-
   // Agent selected but no conversation → show welcome page
   if (!convId && agent) {
     return <ChatWelcome agent={agent} onSend={handleWelcomeSend} />;
@@ -263,8 +248,8 @@ export default function ChatPage() {
   if (!convId) {
     return (
       <div className="empty-state">
-        <h2>Select a conversation</h2>
-        <p>Choose a conversation from the sidebar or start a new chat.</p>
+        <h2>选择一个 Agent 开始对话</h2>
+        <p>从左侧列表选择一个 Agent，或创建新的对话。</p>
       </div>
     );
   }

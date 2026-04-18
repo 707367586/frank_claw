@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "clawx-gui"
 version = "0.2.0"
