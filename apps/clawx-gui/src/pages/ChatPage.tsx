@@ -165,14 +165,16 @@ export default function ChatPage() {
             setStreamingContent((prev) => prev + data);
           }
         },
-        () => {
+        async () => {
           // Stream complete — refresh messages from server
           setIsStreaming(false);
           setStreamingContent("");
-          listMessages(convId).then(
-            (msgs) => setMessages(msgs),
-            (err) => console.error("Failed to refresh messages:", err),
-          );
+          try {
+            const msgs = await listMessages(convId!);
+            setMessages(msgs);
+          } catch (e) {
+            console.error("Failed to refresh messages:", e);
+          }
         },
         (err: Error) => {
           console.error("Stream error:", err);
@@ -221,13 +223,15 @@ export default function ChatPage() {
                 setStreamingContent((prev) => prev + data);
               }
             },
-            () => {
+            async () => {
               setIsStreaming(false);
               setStreamingContent("");
-              listMessages(conv.id).then(
-                (msgs) => setMessages(msgs),
-                (err) => console.error("Failed to refresh messages:", err),
-              );
+              try {
+                const msgs = await listMessages(conv.id);
+                setMessages(msgs);
+              } catch (e) {
+                console.error("Failed to refresh messages:", e);
+              }
             },
             (err: Error) => {
               console.error("Stream error:", err);

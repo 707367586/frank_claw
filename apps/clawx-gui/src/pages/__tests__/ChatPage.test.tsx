@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import ChatPage from "../ChatPage";
@@ -77,5 +78,65 @@ describe("ChatPage model surface", () => {
     );
 
     await waitFor(() => expect(screen.getByText("未选择")).toBeInTheDocument());
+  });
+
+  it("appends streamed text to messages on stream done", async () => {
+    const api = await import("../../lib/api");
+
+    // Until onDone fires, listMessages returns empty so pong-from-llm is NOT
+    // in the DOM yet. After the post-done refresh switch below, it returns
+    // the final conversation containing the assistant reply.
+    let streamDone = false;
+    (api.listMessages as any).mockReset();
+    (api.listMessages as any).mockImplementation(async () =>
+      streamDone
+        ? [
+            { id: "m1", conversation_id: "c1", role: "user", content: "ping", created_at: "" },
+            { id: "m2", conversation_id: "c1", role: "assistant", content: "pong-from-llm", created_at: "" },
+          ]
+        : [],
+    );
+    (api.listConversations as any).mockResolvedValue([
+      { id: "c1", agent_id: "a1", title: "", created_at: "", updated_at: "" },
+    ]);
+
+    let capturedOnDone: (() => void) | undefined;
+    (api.sendMessageStream as any).mockReset();
+    (api.sendMessageStream as any).mockImplementation(
+      (_c: string, _msg: string, _onMsg: any, onDone: any) => {
+        capturedOnDone = onDone;
+        return new AbortController();
+      },
+    );
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/?conv=c1&agent=a1"]}>
+        <AgentProvider>
+          <Routes>
+            <Route path="/" element={<ChatPage />} />
+          </Routes>
+        </AgentProvider>
+      </MemoryRouter>,
+    );
+
+    // wait for initial load
+    await waitFor(() =>
+      expect((api.listMessages as any)).toHaveBeenCalledWith("c1"),
+    );
+
+    // type + send via Enter
+    const input = await screen.findByPlaceholderText("输入任何问题...");
+    await user.type(input, "ping{enter}");
+
+    // Flip the mock so the refresh triggered by onDone returns the final
+    // assistant reply, then simulate SSE done.
+    streamDone = true;
+    expect(capturedOnDone).toBeDefined();
+    capturedOnDone?.();
+
+    await waitFor(() =>
+      expect(screen.getByText("pong-from-llm")).toBeInTheDocument(),
+    );
   });
 });
