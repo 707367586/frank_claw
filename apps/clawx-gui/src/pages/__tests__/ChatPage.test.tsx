@@ -1,14 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import ChatPage from "../ChatPage";
 import { AgentProvider } from "../../lib/store";
-
-// JSDOM does not implement Element.scrollIntoView; ChatPage calls it on mount via
-// an effect. Stub it so the component tree can render without crashing.
-beforeAll(() => {
-  Element.prototype.scrollIntoView = vi.fn();
-});
 
 vi.mock("../../lib/api", () => ({
   listAgents: vi.fn().mockResolvedValue([
@@ -43,5 +37,45 @@ describe("ChatPage model surface", () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(screen.getByText("glm-4.6")).toBeInTheDocument());
+  });
+
+  it("shows 未选择 while provider list is still loading", async () => {
+    const { listModels } = await import("../../lib/api");
+    (listModels as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise(() => {}),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/?conv=c1&agent=a1"]}>
+        <AgentProvider>
+          <Routes>
+            <Route path="/" element={<ChatPage />} />
+          </Routes>
+        </AgentProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText("未选择")).toBeInTheDocument());
+  });
+
+  it("falls back to 未选择 when agent's model_id has no matching provider", async () => {
+    const api = await import("../../lib/api");
+    (api.listModels as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { id: "different-id", name: "x", provider_type: "zhipu",
+        base_url: "", model_name: "glm-4.6", parameters: {},
+        is_default: false, created_at: "", updated_at: "" },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={["/?conv=c1&agent=a1"]}>
+        <AgentProvider>
+          <Routes>
+            <Route path="/" element={<ChatPage />} />
+          </Routes>
+        </AgentProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText("未选择")).toBeInTheDocument());
   });
 });
