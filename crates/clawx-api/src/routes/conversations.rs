@@ -299,28 +299,51 @@ async fn stream_agent_response(
             let state_clone = state.clone();
             let conv_id = conversation_id.clone();
 
-            let sse_stream = llm_stream.map(|chunk_result| match chunk_result {
-                Ok(chunk) => Ok(Event::default()
-                    .event("delta")
-                    .data(
-                        serde_json::to_string(&json!({
-                            "delta": chunk.delta,
-                            "stop_reason": chunk.stop_reason,
-                        }))
-                        .unwrap_or_default(),
-                    )),
-                Err(e) => Ok(Event::default()
-                    .event("error")
-                    .data(json!({"error": e.to_string()}).to_string())),
+            // Accumulate deltas as the stream is consumed so we can persist
+            // the full assistant response on the terminal `done` event.
+            let accumulator: Arc<tokio::sync::Mutex<String>> =
+                Arc::new(tokio::sync::Mutex::new(String::new()));
+
+            let acc_for_stream = accumulator.clone();
+            let sse_stream = llm_stream.then(move |chunk_result| {
+                let acc = acc_for_stream.clone();
+                async move {
+                    match chunk_result {
+                        Ok(chunk) => {
+                            if !chunk.delta.is_empty() {
+                                acc.lock().await.push_str(&chunk.delta);
+                            }
+                            Ok::<Event, std::convert::Infallible>(Event::default()
+                                .event("delta")
+                                .data(
+                                    serde_json::to_string(&json!({
+                                        "delta": chunk.delta,
+                                        "stop_reason": chunk.stop_reason,
+                                    }))
+                                    .unwrap_or_default(),
+                                ))
+                        }
+                        Err(e) => Ok::<Event, std::convert::Infallible>(Event::default()
+                            .event("error")
+                            .data(json!({"error": e.to_string()}).to_string())),
+                    }
+                }
             });
 
+            let acc_for_done = accumulator.clone();
             let done_event = stream::once(async move {
-                // Store the assistant response placeholder
+                // Persist the accumulated assistant response.
+                let final_content = acc_for_done.lock().await.clone();
+                let persisted = if final_content.is_empty() {
+                    "(empty response)"
+                } else {
+                    final_content.as_str()
+                };
                 let _ = conversation_repo::add_message(
                     &state_clone.runtime.db.main,
                     &conv_id,
                     "assistant",
-                    "[streamed response]",
+                    persisted,
                 )
                 .await;
 

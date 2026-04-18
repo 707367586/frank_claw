@@ -1140,6 +1140,83 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[tokio::test]
+    async fn sse_persists_accumulated_content_not_placeholder() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+
+        let state = make_state().await;
+        let app = build_router(state.clone());
+
+        // 1. Build agent + conversation (StubLlmProvider emits a non-empty delta)
+        let agent = clawx_types::agent::AgentConfig {
+            id: clawx_types::ids::AgentId::new(),
+            name: "t".into(),
+            role: "t".into(),
+            system_prompt: None,
+            model_id: clawx_types::ids::ProviderId::new(),
+            icon: None,
+            status: clawx_types::agent::AgentStatus::Idle,
+            capabilities: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            last_active_at: None,
+        };
+        let agent_id = clawx_runtime::agent_repo::create_agent(
+            &state.runtime.db.main,
+            &agent,
+        )
+        .await
+        .unwrap()
+        .id;
+
+        let conv_id = clawx_runtime::conversation_repo::create_conversation(
+            &state.runtime.db.main,
+            &agent_id.to_string(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        // 2. Send a user message with stream=true and consume the SSE stream
+        let body = serde_json::json!({
+            "role": "user",
+            "content": "ping",
+            "stream": true,
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/conversations/{}/messages", conv_id))
+            .header("Authorization", "Bearer test-token-123")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let _ = resp.into_body().collect().await.unwrap();
+
+        // 3. The stored assistant message must contain accumulated deltas, not the placeholder
+        let messages = clawx_runtime::conversation_repo::list_messages(
+            &state.runtime.db.main,
+            &conv_id,
+        )
+        .await
+        .unwrap();
+        let assistant = messages
+            .iter()
+            .find(|m| m["role"] == "assistant")
+            .expect("assistant message must exist after stream");
+        let content = assistant["content"].as_str().unwrap();
+        assert!(
+            !content.contains("[streamed response]"),
+            "assistant content must be accumulated deltas, got: {}",
+            content,
+        );
+        assert!(!content.is_empty(), "assistant content must not be empty");
+    }
+
+    #[tokio::test]
     async fn permission_profile_for_agent() {
         let state = make_state().await;
         let router = build_router(state.clone());
