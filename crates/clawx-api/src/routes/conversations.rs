@@ -74,16 +74,24 @@ async fn create_conversation(
 
 #[derive(Debug, Deserialize)]
 struct ListConversationsQuery {
-    agent_id: String,
+    #[serde(default)]
+    agent_id: Option<String>,
 }
 
 async fn list_conversations(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(query): axum::extract::Query<ListConversationsQuery>,
 ) -> ApiResult<Json<Vec<Value>>> {
-    let convs = conversation_repo::list_conversations(&state.runtime.db.main, &query.agent_id)
-        .await
-        .map_err(internal_err)?;
+    let convs = match query.agent_id {
+        Some(agent_id) => {
+            conversation_repo::list_conversations(&state.runtime.db.main, &agent_id)
+                .await
+                .map_err(internal_err)?
+        }
+        None => conversation_repo::list_all_conversations(&state.runtime.db.main)
+            .await
+            .map_err(internal_err)?,
+    };
     Ok(Json(convs))
 }
 

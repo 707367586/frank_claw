@@ -335,6 +335,14 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_conversations_without_agent_id_returns_200() {
+        let router = build_router(make_state().await);
+        let (status, _body) =
+            request(&router, "GET", "/conversations", "test-token-123").await;
+        assert_eq!(status, 200, "expected 200, got {}", status);
+    }
+
+    #[tokio::test]
     async fn conversations_get_not_found() {
         let router = build_router(make_state().await);
         let (status, body) = request(

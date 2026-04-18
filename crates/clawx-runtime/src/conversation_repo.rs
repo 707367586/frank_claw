@@ -80,6 +80,32 @@ pub async fn list_conversations(
         .collect())
 }
 
+/// List all conversations across all agents, ordered by most recent first.
+pub async fn list_all_conversations(pool: &SqlitePool) -> Result<Vec<serde_json::Value>> {
+    let rows: Vec<(String, String, Option<String>, String, String, String)> = sqlx::query_as(
+        "SELECT id, agent_id, title, status, created_at, updated_at
+         FROM conversations
+         ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| ClawxError::Database(format!("list all conversations: {}", e)))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(id, agent_id, title, status, created_at, updated_at)| {
+            serde_json::json!({
+                "id": id,
+                "agent_id": agent_id,
+                "title": title,
+                "status": status,
+                "created_at": created_at,
+                "updated_at": updated_at,
+            })
+        })
+        .collect())
+}
+
 /// Get a single conversation by ID.
 pub async fn get_conversation(
     pool: &SqlitePool,
