@@ -58,7 +58,9 @@ export default function ChatPage() {
   // the convId URL param flips null → new-id and would otherwise trigger the
   // load-messages effect below, aborting our just-started stream. This ref
   // records the conv id we're mid-stream into so the effect can skip itself
-  // for that transition only.
+  // for that transition only. Single-shot, cleared on every convId change
+  // (both matching and non-matching) so a stale marker can't silently skip a
+  // later navigation back to the same conv.
   const streamingConvRef = useRef<string | null>(null);
 
   const scrollToBottom = useCallback(
@@ -97,6 +99,10 @@ export default function ChatPage() {
       streamingConvRef.current = null;
       return;
     }
+
+    // User navigated to a different conv: drop any stale welcome handoff marker
+    // so we don't silently skip the load on a later return to it.
+    streamingConvRef.current = null;
 
     // Abort any active stream when conversation changes
     abortRef.current?.abort();
