@@ -6,7 +6,6 @@ describe("api base url", () => {
     // Remove .env.local override so the `??` fallback runs.
     // Can't assign undefined: Vite's env Proxy coerces to the string "undefined".
     // Can't rely on afterEach restore either — but vitest's unstubEnvs:true handles it.
-    // @ts-expect-error delete override
     delete import.meta.env.VITE_API_URL;
   });
 

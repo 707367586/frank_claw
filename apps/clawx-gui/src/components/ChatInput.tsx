@@ -9,8 +9,10 @@ interface Props {
   onPickModel?: () => void;
 }
 
-export default function ChatInput({ onSend, disabled, model = "Sonnet 4.6", onPickModel }: Props) {
+export default function ChatInput({ onSend, disabled, model, onPickModel }: Props) {
   const [value, setValue] = useState("");
+  const label = model && model.length > 0 ? model : "未选择";
+
   function submit() {
     const t = value.trim();
     if (!t || disabled) return;
@@ -18,8 +20,12 @@ export default function ChatInput({ onSend, disabled, model = "Sonnet 4.6", onPi
     setValue("");
   }
   function onKey(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
   }
+
   return (
     <div className="chat-input">
       <IconButton icon={<Plus size={16} />} aria-label="附件" variant="ghost" size="sm" />
@@ -36,7 +42,7 @@ export default function ChatInput({ onSend, disabled, model = "Sonnet 4.6", onPi
         disabled={disabled}
       />
       <button className="chat-input__model" type="button" onClick={onPickModel}>
-        <span>{model}</span>
+        <span>{label}</span>
         <ChevronDown size={14} />
       </button>
       <IconButton
