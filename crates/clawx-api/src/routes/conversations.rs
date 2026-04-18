@@ -304,9 +304,17 @@ async fn stream_agent_response(
             let accumulator: Arc<tokio::sync::Mutex<String>> =
                 Arc::new(tokio::sync::Mutex::new(String::new()));
 
+            // Tracks whether the LLM stream emitted any `Err` chunk. If it did,
+            // we skip persisting the partial accumulated content on `done` —
+            // persisting half-finished output silently would mislead callers.
+            let errored: Arc<std::sync::atomic::AtomicBool> =
+                Arc::new(std::sync::atomic::AtomicBool::new(false));
+
             let acc_for_stream = accumulator.clone();
+            let errored_for_stream = errored.clone();
             let sse_stream = llm_stream.then(move |chunk_result| {
                 let acc = acc_for_stream.clone();
+                let errored = errored_for_stream.clone();
                 async move {
                     match chunk_result {
                         Ok(chunk) => {
@@ -323,29 +331,48 @@ async fn stream_agent_response(
                                     .unwrap_or_default(),
                                 ))
                         }
-                        Err(e) => Ok::<Event, std::convert::Infallible>(Event::default()
-                            .event("error")
-                            .data(json!({"error": e.to_string()}).to_string())),
+                        Err(e) => {
+                            errored.store(true, std::sync::atomic::Ordering::SeqCst);
+                            tracing::warn!(
+                                error = %e,
+                                "LLM stream yielded error mid-stream; will skip persistence",
+                            );
+                            Ok::<Event, std::convert::Infallible>(Event::default()
+                                .event("error")
+                                .data(json!({"error": e.to_string()}).to_string()))
+                        }
                     }
                 }
             });
 
             let acc_for_done = accumulator.clone();
+            let errored_for_done = errored.clone();
             let done_event = stream::once(async move {
-                // Persist the accumulated assistant response.
-                let final_content = acc_for_done.lock().await.clone();
-                let persisted = if final_content.is_empty() {
-                    "(empty response)"
-                } else {
-                    final_content.as_str()
-                };
-                let _ = conversation_repo::add_message(
-                    &state_clone.runtime.db.main,
-                    &conv_id,
-                    "assistant",
-                    persisted,
-                )
-                .await;
+                // Persist the accumulated assistant response — unless the
+                // stream errored mid-flight, in which case the partial text
+                // would be misleading.
+                if !errored_for_done.load(std::sync::atomic::Ordering::SeqCst) {
+                    let final_content = acc_for_done.lock().await.clone();
+                    let persisted = if final_content.is_empty() {
+                        "(empty response)".to_string()
+                    } else {
+                        final_content
+                    };
+                    if let Err(e) = conversation_repo::add_message(
+                        &state_clone.runtime.db.main,
+                        &conv_id,
+                        "assistant",
+                        &persisted,
+                    )
+                    .await
+                    {
+                        tracing::error!(
+                            conversation_id = %conv_id,
+                            error = %e,
+                            "failed to persist streamed assistant response",
+                        );
+                    }
+                }
 
                 Ok::<_, std::convert::Infallible>(
                     Event::default()

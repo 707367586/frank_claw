@@ -24,6 +24,7 @@ http-body-util = "0.1"
 uuid = { workspace = true }
 chrono = { workspace = true }
 tempfile = "3"
+async-trait = { workspace = true }
 clawx-config = { workspace = true }
 clawx-llm = { workspace = true }
 clawx-memory = { workspace = true }

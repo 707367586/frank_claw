@@ -71,10 +71,19 @@ mod tests {
     use tower::ServiceExt;
 
     async fn make_state() -> AppState {
+        make_state_with_llm(Arc::new(clawx_llm::StubLlmProvider)).await
+    }
+
+    /// Build an `AppState` backed by an in-memory DB and stub services, but
+    /// with a caller-supplied LLM provider. Used by streaming tests that
+    /// need to control the exact chunk sequence / error behavior.
+    async fn make_state_with_llm(
+        llm: Arc<dyn clawx_types::traits::LlmProvider>,
+    ) -> AppState {
         AppState {
             runtime: Runtime::new(
                 clawx_runtime::db::Database::in_memory().await.unwrap(),
-                Arc::new(clawx_llm::StubLlmProvider),
+                llm,
                 Arc::new(clawx_memory::StubMemoryService),
                 Arc::new(clawx_memory::StubWorkingMemoryManager),
                 Arc::new(clawx_memory::StubMemoryExtractor),
@@ -1214,6 +1223,216 @@ mod tests {
             content,
         );
         assert!(!content.is_empty(), "assistant content must not be empty");
+    }
+
+    /// Fake LLM that streams a fixed sequence of deltas — used to exercise
+    /// the accumulator's `push_str` loop across multiple chunks.
+    struct MultiChunkLlm {
+        chunks: Vec<&'static str>,
+    }
+
+    #[async_trait::async_trait]
+    impl clawx_types::traits::LlmProvider for MultiChunkLlm {
+        async fn complete(
+            &self,
+            _request: clawx_types::llm::CompletionRequest,
+        ) -> clawx_types::error::Result<clawx_types::llm::LlmResponse> {
+            Ok(clawx_types::llm::LlmResponse {
+                content: self.chunks.join(""),
+                stop_reason: clawx_types::llm::StopReason::EndTurn,
+                tool_calls: vec![],
+                usage: clawx_types::llm::TokenUsage::default(),
+                metadata: None,
+            })
+        }
+
+        async fn stream(
+            &self,
+            _request: clawx_types::llm::CompletionRequest,
+        ) -> clawx_types::error::Result<
+            std::pin::Pin<
+                Box<
+                    dyn futures::Stream<
+                            Item = clawx_types::error::Result<
+                                clawx_types::llm::LlmStreamChunk,
+                            >,
+                        > + Send,
+                >,
+            >,
+        > {
+            let chunks = self.chunks.clone();
+            let stream = futures::stream::iter(chunks.into_iter().map(|c| {
+                Ok(clawx_types::llm::LlmStreamChunk {
+                    delta: c.to_string(),
+                    stop_reason: None,
+                    usage: None,
+                })
+            }));
+            Ok(Box::pin(stream))
+        }
+
+        async fn test_connection(&self) -> clawx_types::error::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Fake LLM that yields one good chunk and then an `Err` — used to
+    /// prove that mid-stream errors do NOT persist partial content.
+    struct FailingLlm;
+
+    #[async_trait::async_trait]
+    impl clawx_types::traits::LlmProvider for FailingLlm {
+        async fn complete(
+            &self,
+            _request: clawx_types::llm::CompletionRequest,
+        ) -> clawx_types::error::Result<clawx_types::llm::LlmResponse> {
+            unimplemented!("FailingLlm only supports stream()")
+        }
+
+        async fn stream(
+            &self,
+            _request: clawx_types::llm::CompletionRequest,
+        ) -> clawx_types::error::Result<
+            std::pin::Pin<
+                Box<
+                    dyn futures::Stream<
+                            Item = clawx_types::error::Result<
+                                clawx_types::llm::LlmStreamChunk,
+                            >,
+                        > + Send,
+                >,
+            >,
+        > {
+            let stream = futures::stream::iter(vec![
+                Ok(clawx_types::llm::LlmStreamChunk {
+                    delta: "partial".into(),
+                    stop_reason: None,
+                    usage: None,
+                }),
+                Err(clawx_types::ClawxError::LlmProvider("boom".into())),
+            ]);
+            Ok(Box::pin(stream))
+        }
+
+        async fn test_connection(&self) -> clawx_types::error::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Shared boilerplate: build an agent + empty conversation in `state`,
+    /// returning the conversation ID for stream tests.
+    async fn seed_agent_and_conversation(state: &AppState) -> String {
+        let agent = clawx_types::agent::AgentConfig {
+            id: clawx_types::ids::AgentId::new(),
+            name: "t".into(),
+            role: "t".into(),
+            system_prompt: None,
+            model_id: clawx_types::ids::ProviderId::new(),
+            icon: None,
+            status: clawx_types::agent::AgentStatus::Idle,
+            capabilities: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            last_active_at: None,
+        };
+        let agent_id = clawx_runtime::agent_repo::create_agent(&state.runtime.db.main, &agent)
+            .await
+            .unwrap()
+            .id;
+        clawx_runtime::conversation_repo::create_conversation(
+            &state.runtime.db.main,
+            &agent_id.to_string(),
+            None,
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn sse_accumulates_multi_chunk_stream_into_single_message() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+
+        let llm: Arc<dyn clawx_types::traits::LlmProvider> = Arc::new(MultiChunkLlm {
+            chunks: vec!["Hello ", "world", "!"],
+        });
+        let state = make_state_with_llm(llm).await;
+        let app = build_router(state.clone());
+        let conv_id = seed_agent_and_conversation(&state).await;
+
+        let body = serde_json::json!({
+            "role": "user",
+            "content": "ping",
+            "stream": true,
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/conversations/{}/messages", conv_id))
+            .header("Authorization", "Bearer test-token-123")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let _ = resp.into_body().collect().await.unwrap();
+
+        let messages = clawx_runtime::conversation_repo::list_messages(
+            &state.runtime.db.main,
+            &conv_id,
+        )
+        .await
+        .unwrap();
+        let assistant = messages
+            .iter()
+            .find(|m| m["role"] == "assistant")
+            .expect("assistant message must exist after stream");
+        assert_eq!(
+            assistant["content"].as_str().unwrap(),
+            "Hello world!",
+            "accumulator must concatenate all 3 deltas in order",
+        );
+    }
+
+    #[tokio::test]
+    async fn sse_does_not_persist_on_mid_stream_error() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+
+        let state = make_state_with_llm(Arc::new(FailingLlm)).await;
+        let app = build_router(state.clone());
+        let conv_id = seed_agent_and_conversation(&state).await;
+
+        let body = serde_json::json!({
+            "role": "user",
+            "content": "ping",
+            "stream": true,
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/conversations/{}/messages", conv_id))
+            .header("Authorization", "Bearer test-token-123")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let _ = resp.into_body().collect().await.unwrap();
+
+        let messages = clawx_runtime::conversation_repo::list_messages(
+            &state.runtime.db.main,
+            &conv_id,
+        )
+        .await
+        .unwrap();
+        assert!(
+            messages.iter().all(|m| m["role"] != "assistant"),
+            "should not have persisted partial content on mid-stream error, got: {:?}",
+            messages,
+        );
     }
 
     #[tokio::test]
