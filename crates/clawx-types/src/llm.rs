@@ -17,7 +17,7 @@ pub enum MessageRole {
 ///
 /// `content` remains the plain-text channel for back-compat with older code paths.
 /// `blocks` is additive: when non-empty it carries structured content
-/// (`tool_use`, `tool_result`, future `image`) that providers serialize
+/// (`tool_use`, `tool_result`) that providers serialize
 /// into their native block formats.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -45,6 +45,8 @@ pub enum ContentBlock {
         name: String,
         input: serde_json::Value,
     },
+    /// Phase 1: `content` is a plain string. Anthropic also allows nested
+    /// content blocks here — revisit when we need image/tool-nested results.
     ToolResult {
         tool_use_id: String,
         content: String,
@@ -237,6 +239,44 @@ mod content_block_tests {
         match back {
             ContentBlock::ToolResult { is_error, .. } => assert!(is_error),
             _ => panic!("expected ToolResult"),
+        }
+    }
+
+    #[test]
+    fn tool_result_is_error_false_is_omitted_on_wire() {
+        let b = ContentBlock::ToolResult {
+            tool_use_id: "call_1".into(),
+            content: "ok".into(),
+            is_error: false,
+        };
+        let s = serde_json::to_string(&b).unwrap();
+        assert!(
+            !s.contains("is_error"),
+            "is_error=false must be omitted, got: {s}"
+        );
+    }
+
+    #[test]
+    fn tool_result_missing_is_error_defaults_false() {
+        let raw = r#"{"type":"tool_result","tool_use_id":"x","content":"ok"}"#;
+        let back: ContentBlock = serde_json::from_str(raw).unwrap();
+        match back {
+            ContentBlock::ToolResult { is_error, .. } => assert!(!is_error),
+            _ => panic!("expected ToolResult"),
+        }
+    }
+
+    #[test]
+    fn text_block_round_trips() {
+        let b = ContentBlock::Text {
+            text: "hello".into(),
+        };
+        let s = serde_json::to_string(&b).unwrap();
+        assert!(s.contains(r#""type":"text""#));
+        let back: ContentBlock = serde_json::from_str(&s).unwrap();
+        match back {
+            ContentBlock::Text { text } => assert_eq!(text, "hello"),
+            _ => panic!("expected Text"),
         }
     }
 }
