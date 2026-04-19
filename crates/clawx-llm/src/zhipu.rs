@@ -365,6 +365,10 @@ mod tool_calls_tests {
         let mapped = to_llm_response(resp, "zhipu");
         assert_eq!(mapped.tool_calls.len(), 1);
         assert_eq!(mapped.tool_calls[0].name, "fs_mkdir");
+        assert_eq!(
+            mapped.tool_calls[0].arguments,
+            serde_json::json!({"path": "/tmp/x"}),
+        );
         assert_eq!(mapped.stop_reason, StopReason::ToolUse);
     }
 }

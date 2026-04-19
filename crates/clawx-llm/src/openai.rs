@@ -48,17 +48,23 @@ impl OpenAiProvider {
 
             if m.role == MessageRole::Tool {
                 // Flatten ToolResult blocks into the top-level content string.
+                // OpenAI's role:"tool" has no is_error field, so we inline the
+                // error signal as a "[tool error] " prefix so the model can
+                // distinguish failures from successes on the next turn.
                 let mut txt = String::new();
                 let mut tool_call_id = m.tool_call_id.clone();
                 for b in &m.blocks {
                     if let ContentBlock::ToolResult {
                         tool_use_id,
                         content,
-                        ..
+                        is_error,
                     } = b
                     {
                         if !txt.is_empty() {
                             txt.push('\n');
+                        }
+                        if *is_error {
+                            txt.push_str("[tool error] ");
                         }
                         txt.push_str(content);
                         tool_call_id.get_or_insert_with(|| tool_use_id.clone());
@@ -218,11 +224,26 @@ pub(crate) fn to_llm_response(resp: OpenAiResponse, provider: &'static str) -> L
                 .message
                 .tool_calls
                 .into_iter()
-                .map(|tc| ToolCall {
-                    id: tc.id,
-                    name: tc.function.name,
-                    arguments: serde_json::from_str(&tc.function.arguments)
-                        .unwrap_or(serde_json::Value::String(tc.function.arguments)),
+                .map(|tc| {
+                    let arguments = match serde_json::from_str(&tc.function.arguments) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::warn!(
+                                provider = %provider,
+                                tool_call_id = %tc.id,
+                                tool = %tc.function.name,
+                                error = %e,
+                                raw = %tc.function.arguments,
+                                "tool_call arguments were not valid JSON; falling back to raw string",
+                            );
+                            serde_json::Value::String(tc.function.arguments)
+                        }
+                    };
+                    ToolCall {
+                        id: tc.id,
+                        name: tc.function.name,
+                        arguments,
+                    }
                 })
                 .collect::<Vec<_>>();
             (
@@ -237,6 +258,10 @@ pub(crate) fn to_llm_response(resp: OpenAiResponse, provider: &'static str) -> L
         (Some("tool_calls"), _) => StopReason::ToolUse,
         (_, false) => StopReason::ToolUse,
         (Some("length"), _) => StopReason::MaxTokens,
+        // GLM emits "sensitive" when the response was redacted by its safety
+        // filter. OpenAI never emits this, but we pass it through here so the
+        // shared mapper handles both providers faithfully.
+        (Some("sensitive"), _) => StopReason::StopSequence,
         _ => StopReason::EndTurn,
     };
     let usage = resp
@@ -456,6 +481,54 @@ mod tool_calls_tests {
         let mapped = to_llm_response(resp, "openai");
         assert_eq!(mapped.tool_calls.len(), 1);
         assert_eq!(mapped.tool_calls[0].name, "fs_mkdir");
+        assert_eq!(
+            mapped.tool_calls[0].arguments,
+            serde_json::json!({"path": "/tmp/x"}),
+        );
         assert_eq!(mapped.stop_reason, StopReason::ToolUse);
+    }
+
+    #[test]
+    fn build_body_emits_is_error_prefix_on_failed_tool_result() {
+        let req = CompletionRequest {
+            model: "gpt-x".into(),
+            messages: vec![Message {
+                role: MessageRole::Tool,
+                content: String::new(),
+                blocks: vec![ContentBlock::ToolResult {
+                    tool_use_id: "call_1".into(),
+                    content: "permission denied".into(),
+                    is_error: true,
+                }],
+                tool_call_id: Some("call_1".into()),
+            }],
+            tools: None,
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+        };
+        let body = dummy().build_body(&req);
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(
+            json["messages"][0]["content"], "[tool error] permission denied",
+            "is_error: true must be surfaced in the content prefix",
+        );
+    }
+
+    #[test]
+    fn to_llm_response_maps_sensitive_finish_to_stop_sequence() {
+        let raw = serde_json::json!({
+            "id": "c1",
+            "model": "glm-4",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "sensitive",
+                "message": {"role": "assistant", "content": null}
+            }],
+            "usage": null
+        });
+        let resp: OpenAiResponse = serde_json::from_value(raw).unwrap();
+        let mapped = to_llm_response(resp, "zhipu");
+        assert_eq!(mapped.stop_reason, StopReason::StopSequence);
     }
 }
