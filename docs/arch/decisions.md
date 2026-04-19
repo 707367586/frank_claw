@@ -314,3 +314,35 @@
 - 放弃 SwiftUI 后，未来 iOS 移动端随行（v1.0+）需独立开发原生 Swift app 或采用 React Native
 
 **废弃:** `clawx-ffi` crate 彻底删除，不再维护。
+
+---
+
+## ADR-036: 2026-04-19 Agentic tool-use loop (Phase 1)
+
+**背景:** `agent_loop::run_turn` 以前从不向 LLM 传递 `tools`，Agent 只能输出文本，无法让它在本地创建文件夹、列目录、执行命令。目标是对标 picoclaw：把 tool loop、内置工具、审批门、macOS 沙箱组合起来落地。
+
+**决策:**
+
+- 新增 `clawx-tools` crate，定义 `Tool` trait + `ToolRegistry` + `ToolExecCtx`。
+- 扩展 `clawx-types::llm::Message`，新增结构化 `blocks: Vec<ContentBlock>`（`Text` / `ToolUse` / `ToolResult`），与旧的 `content: String` 并存，保证历史代码可编译。
+- 三家 LLM provider 统一补齐 tool wire：Anthropic 的 `tool_use` / `tool_result` content block、OpenAI-compat 的 `tool_calls` 数组（ZhipuAI 委托 OpenAI 模块实现）。`is_error: false` 强制不上线（`skip_serializing_if`）；`finish_reason = "sensitive"` 映射为 `StopSequence` 保留 GLM 语义。
+- `runtime::tool_loop::run_with_tools` 作为循环驱动：注入 `registry.definitions()`、重写 assistant content blocks、把每次工具结果作为 `role: Tool` 追回消息列表、在 `StopReason != ToolUse` 时返回。当 `max_iterations` 触顶时返回 `ClawxError::Tool`。
+- `agent_loop::run_turn` 根据 `(runtime.tools, runtime.approval, runtime.workspace)` 是否齐备二选一：齐备走 tool loop，缺任何一个则保持原 single-call 行为（向后兼容）。
+- 内置工具：`fs_read` / `fs_write` / `fs_mkdir` / `fs_list` / `shell_exec`。所有路径经 `resolve_in_workspace` 双重把关——先词法拒绝 `..` 与绝对路径越界，再 canonicalize 最深存在祖先，拦截"workspace 内预存的指向外部的 symlink"。
+- `shell_exec` 仅 macOS 实现：包一层 `/usr/bin/sandbox-exec -p <profile>`，profile 默认拒网络、仅允许在 workspace / TMPDIR 下写。非 macOS 返回 `unsupported`。
+- `RuleApprovalGate` 三档：`auto` / `prompt` / `deny`，按 `tool × path_glob` 规则链表匹配，用户规则前插优先。`default_claw_code_style()` 基线：读类 auto，写+shell prompt。
+- `ChannelPromptGate` 把 `prompt` 档挂到 `POST /tools/approval/:id`，GUI 决策写回 oneshot。
+
+**关键权衡:**
+
+- 不引入 `globset`：`glob_match` 手写 `*` / `?` 递归匹配器，规则数据面由受信 config 提供，LLM 无法投毒路径 glob，O(2^n) 最坏复杂度可接受。
+- 不做 streaming + tool_use：三家 provider 的 `stream()` 在 `request.tools.is_some()` 时 early-return 错误。Phase 2 的 SSE 解析补齐后再处理。
+- 沙箱 profile 里放宽 `subpath "/private/var/folders"` 是为 TMPDIR，`tempfile::tempdir()` canonicalize 后正好落在这条。
+- GUI 审批端点当前挂在 auth middleware 之外（loopback UDS/TCP 触达），遵循现有 API 的安全模型。
+
+**影响面:**
+
+- `Message` 新字段 `blocks` 通过 `#[serde(default, skip_serializing_if = "Vec::is_empty")]` 兼容旧 JSON；所有 `Message { ... }` 构造点加 `blocks: vec![]` 即可。
+- Phase 2 计划（hook / SubTurn / steering / MCP 客户端 / markdown skills / GUI 审批对话框 / streaming + tool_use）全部可以构建在这套 surface 之上，不需要回头动 provider 或 content block。
+
+**验证:** 整套 `cargo test --workspace` 绿；新增 E2E 测试 `agent_creates_folder_via_tool_use` 用 scripted LLM 在临时 workspace 里实际创建了目录；`shell_blocks_write_outside_workspace` 用真 `sandbox-exec` 拦住了 `$HOME` 写入。

@@ -141,3 +141,54 @@ cd apps/clawx-gui && npx tsc -b  # 类型干净
 5. 回首页点该 Agent → 欢迎页显示 Agent 真名 + 自定义 subtitle；底部 composer 显示 `glm-4.6`（或所填模型名）。
 6. 点击建议卡片 → 自动创建对话 → SSE 流入真实文本 → done 后持久化落库。
 7. 刷新/重开窗口，历史消息保留。
+
+---
+
+## 2026-04-19 Phase-1 agentic tool-use loop 执行记录
+
+Plan: `docs/superpowers/plans/2026-04-19-agentic-tool-use-phase1.md`
+Branch: `worktree-agentic-tool-use-phase1`（11 tasks，14 commits：11 个 feature + 3 个 code review 后补强）
+
+### 任务交付清单
+
+| Task | 成果 | SHA |
+|------|------|-----|
+| T1 | `ContentBlock { Text / ToolUse / ToolResult }` + `Tool` / `Approval` 错误变种；`is_error: false` 不上线 | `44ffc9a` → `0fc2993` |
+| T2 | Anthropic provider emit top-level `tools` + 解析 `tool_use` content blocks；`stream()` 遇到 tools 直接报错 | `beb30a9` → `c73a8fc` |
+| T3 | OpenAI + Zhipu `tool_calls` wire 统一（Zhipu 复用 OpenAI 数据结构）；`is_error` 在 role:"tool" 消息里用 `[tool error] ` 前缀留痕；`sensitive` → `StopSequence` | `a5843be` → `e99a8c4` |
+| T4 | `clawx-tools` crate 脚手架：`Tool` trait + `ToolRegistry` + `ToolExecCtx` + `resolve_in_workspace` | `25d1053` |
+| T5 | fs 工具四件套 + symlink-escape hardening（canonical ancestor check） | `93a1e4d` → `0b7e087` |
+| T6 | `shell_exec` + `sandbox-exec` profile（非 macOS 返回 unsupported） | `22b98b9` |
+| T7 | `RuleApprovalGate` 三档 + 极简 shell-glob matcher + `PromptGate` trait | `3fd0862` |
+| T8 | `runtime::tool_loop::run_with_tools`；`agent_loop::run_turn` 二分路径；E2E 测试用 scripted LLM 真实创建目录 | `44266bc` |
+| T9 | `clawx-service` 新增 `[lib]` target，`build_runtime_for_tests()` 公共助手；`main.rs` 默认装配五件套 + `RuleApprovalGate::default_claw_code_style()` | `9fb0083` |
+| T10 | `POST /tools/approval/:id`（allow/deny，204/404/400）+ `ChannelPromptGate` 通过 oneshot 把决策回传给 `PromptGate::ask` | `968528b` |
+| T11 | 本条记录 + `decisions.md` ADR-036 | 本提交 |
+
+每个 task 走 subagent 驱动：implementer → spec review → code-quality review → fix → re-review。最终 workspace 200+ 测试全绿、`cargo build --workspace` 绿、所有被修改的文件 clippy/rustfmt 零 drift（预存的无关 drift 按纪律不触碰）。
+
+### 验证命令
+
+- `cargo test --workspace` — 工作区全部测试绿。
+- `cargo test -p clawx-runtime --test tool_loop_e2e` — scripted LLM 创建实目录。
+- `cargo test -p clawx-tools --test shell_integration` — macOS 上 `sandbox-exec` 实机拦住 `$HOME` 写入。
+- `cargo test -p clawx-api --test approval_route` — approval HTTP 端点 3 个用例（allow / 404 / 400）。
+- `cargo clippy -p clawx-types -p clawx-llm -p clawx-tools -p clawx-runtime -p clawx-api -p clawx-service --all-targets -- -D warnings` — 本 PR 触碰的 crate 零 warning；工作区内无关 crate 的预存 drift 不在本计划范围内。
+
+### 手工 walkthrough（macOS）
+
+需要先在 Agent 上把 model 设成真实的 Anthropic / OpenAI / Zhipu 模型（都支持 tool wire 了）。
+
+1. `cargo run -p clawx-service` 启动；打开桌面客户端。
+2. 对 Agent 说"请在我的 workspace 里创建一个叫 `claw-demo` 的文件夹"。
+3. GUI 弹出 approval dialog（`fs_mkdir` 默认 `prompt`）→ 点允许。
+4. `ls ~/.clawx/workspace/claw-demo` 可见。
+5. 说"在里面创建 `hello.txt` 写入 `hi claw`" → 再次 approval → 文件存在且内容正确。
+6. 说"列出这个目录" → Agent 回复 `hello.txt`，无需再次确认（`fs_list` 默认 `auto`）。
+7. 说"运行 `pwd`" → approval → 允许 → stdout 返回 workspace 绝对路径。
+8. 说"运行 `curl https://example.com`" → `sandbox-exec` 拦截 → Agent 收到带 `Operation not permitted` 的 stderr，并向用户说明网络被沙箱禁止（Phase-1 的安全基线）。
+9. 尝试"运行 `touch $HOME/escape.txt`" → 同样被沙箱拦住，`$HOME/escape.txt` 不会被创建。
+
+### Phase-2 待办（已在计划末尾列出，非本 PR 范围）
+
+hook / SubTurn / steering / MCP 客户端 / markdown skills / GUI approval 对话框 / streaming + tool_use。
