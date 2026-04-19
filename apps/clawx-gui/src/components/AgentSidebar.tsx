@@ -41,8 +41,14 @@ export default function AgentSidebar() {
   }, [agents, search]);
 
   const handleSelect = useCallback((id: string) => {
+    // Switching agent resets the conversation context so the welcome page
+    // shows for the new agent instead of the previously selected one's chat.
     const params = new URLSearchParams(searchParams);
+    const previous = params.get("agent");
     params.set("agent", id);
+    if (previous !== id) {
+      params.delete("conv");
+    }
     setSearchParams(params);
   }, [searchParams, setSearchParams]);
 
