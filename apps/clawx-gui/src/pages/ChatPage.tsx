@@ -111,8 +111,13 @@ export default function ChatPage() {
     // so we don't silently skip the load on a later return to it.
     streamingConvRef.current = null;
 
-    // Abort any active stream when conversation changes
-    abortRef.current?.abort();
+    // Deliberately do NOT abort any in-flight stream when the conversation
+    // changes — switching agents should leave the previous agent's stream
+    // running in the background. The server-side SSE accumulator persists
+    // the final assistant reply on completion (see conversations.rs), so
+    // listMessages on return picks up the full text. The visible "typing"
+    // indicator, however, is local to this ChatPage instance — clear it
+    // while we're viewing a different conv.
     abortRef.current = null;
     setIsStreaming(false);
     setStreamingContent("");
@@ -154,9 +159,9 @@ export default function ChatPage() {
 
     load();
     return () => {
+      // Only cancel the in-progress listMessages/listConversations fetch
+      // on effect teardown. Leave any SSE stream in flight.
       cancelled = true;
-      abortRef.current?.abort();
-      abortRef.current = null;
     };
   }, [convId, agents]);
 
@@ -165,12 +170,10 @@ export default function ChatPage() {
     scrollToBottom(isStreaming);
   }, [messages, streamingContent, scrollToBottom, isStreaming]);
 
-  // Clean up SSE on unmount
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
+  // We intentionally do NOT abort SSE streams on unmount. Navigating away
+  // from the chat page (e.g. to /settings) should leave the current agent's
+  // generation running in the background; the backend persists the final
+  // reply on completion, so it is visible next time the user opens that conv.
 
   const streamToConversation = useCallback(
     (convId: string, userText: string) => {

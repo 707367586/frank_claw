@@ -222,3 +222,46 @@ describe("ChatPage welcome-page send", () => {
     );
   });
 });
+
+describe("ChatPage background streaming", () => {
+  it("does not abort an in-flight stream when the user navigates to another conv", async () => {
+    const api = await import("../../lib/api");
+    const abortController = new AbortController();
+    const abortSpy = vi.spyOn(abortController, "abort");
+
+    (api.sendMessageStream as any).mockReset();
+    (api.sendMessageStream as any).mockImplementation(() => abortController);
+
+    (api.listMessages as any).mockReset();
+    (api.listMessages as any).mockResolvedValue([]);
+
+    function Harness({ conv }: { conv: string }) {
+      return (
+        <MemoryRouter initialEntries={[`/?conv=${conv}&agent=a1`]}>
+          <AgentProvider>
+            <Routes>
+              <Route path="/" element={<ChatPage />} />
+            </Routes>
+          </AgentProvider>
+        </MemoryRouter>
+      );
+    }
+
+    const { rerender } = render(<Harness conv="c1" />);
+    await waitFor(() => expect(screen.getByText("glm-4.6")).toBeInTheDocument());
+
+    const user = userEvent.setup();
+    const input = await screen.findByPlaceholderText("输入任何问题...");
+    await user.type(input, "ping{enter}");
+    await waitFor(() => expect(api.sendMessageStream).toHaveBeenCalled());
+
+    // Switch to a different conv — mimicking the user clicking another agent
+    // that has its own active conversation. This must NOT abort c1's stream.
+    rerender(<Harness conv="c2" />);
+
+    // Give React a tick to flush the conv-change effect.
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(abortSpy).not.toHaveBeenCalled();
+  });
+});
