@@ -108,7 +108,19 @@ pub fn parse_args<T: for<'de> Deserialize<'de>>(
         .map_err(|e| ClawxError::Tool(format!("tool {}: invalid arguments: {}", tool_name, e)))
 }
 
-/// Canonicalize `path_arg` under `workspace`. Returns `Err` if it escapes.
+/// Resolve `path_arg` against `workspace` and verify it cannot escape.
+///
+/// Two independent checks, both must pass:
+///   1. Lexical: reject any `..` component and require the joined path to
+///      start with `workspace` — this covers absolute paths and traversal.
+///   2. Canonical: canonicalize the deepest existing ancestor of the
+///      resolved path and require it still starts with the canonicalized
+///      workspace — this catches pre-existing symlinks inside the tree
+///      that point outside (e.g. `<ws>/inner -> /etc`).
+///
+/// The canonical check deliberately only descends as far as the filesystem
+/// goes today, so paths that do not yet exist (fresh `fs_mkdir`, `fs_write`)
+/// are still allowed.
 pub fn resolve_in_workspace(workspace: &std::path::Path, path_arg: &str) -> Result<PathBuf> {
     let p = std::path::Path::new(path_arg);
     let joined = if p.is_absolute() {
@@ -116,8 +128,6 @@ pub fn resolve_in_workspace(workspace: &std::path::Path, path_arg: &str) -> Resu
     } else {
         workspace.join(p)
     };
-    // Disallow `..` components outright. We don't call `canonicalize` because
-    // the path may not exist yet (mkdir, write). Instead, walk the components.
     let mut out = PathBuf::new();
     for c in joined.components() {
         match c {
@@ -136,6 +146,32 @@ pub fn resolve_in_workspace(workspace: &std::path::Path, path_arg: &str) -> Resu
             out.display()
         )));
     }
+
+    // Canonical symlink check — walk up to the deepest existing ancestor.
+    let ws_canon = workspace.canonicalize().map_err(|e| {
+        ClawxError::Tool(format!(
+            "workspace {} is not accessible: {}",
+            workspace.display(),
+            e
+        ))
+    })?;
+    let mut probe: &std::path::Path = &out;
+    while !probe.exists() {
+        match probe.parent() {
+            Some(parent) if parent != probe => probe = parent,
+            _ => return Ok(out), // nothing exists yet: lexical check stands
+        }
+    }
+    let ancestor_canon = probe
+        .canonicalize()
+        .map_err(|e| ClawxError::Tool(format!("canonicalize {}: {}", probe.display(), e)))?;
+    if !ancestor_canon.starts_with(&ws_canon) {
+        return Err(ClawxError::Tool(format!(
+            "path escapes workspace via symlink: {} -> {}",
+            probe.display(),
+            ancestor_canon.display(),
+        )));
+    }
     Ok(out)
 }
 
@@ -148,20 +184,44 @@ pub struct PathArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use tempfile::tempdir;
 
     #[test]
     fn resolve_rejects_parent_dir() {
-        let ws = PathBuf::from("/ws");
-        let err = resolve_in_workspace(&ws, "../etc/passwd").unwrap_err();
+        let dir = tempdir().unwrap();
+        let err = resolve_in_workspace(dir.path(), "../etc/passwd").unwrap_err();
         assert!(format!("{err}").contains("escapes"));
     }
 
     #[test]
     fn resolve_accepts_subdir() {
-        let ws = PathBuf::from("/ws");
-        let got = resolve_in_workspace(&ws, "sub/dir").unwrap();
-        assert_eq!(got, PathBuf::from("/ws/sub/dir"));
+        let dir = tempdir().unwrap();
+        let got = resolve_in_workspace(dir.path(), "sub/dir").unwrap();
+        assert_eq!(got, dir.path().join("sub/dir"));
+    }
+
+    #[test]
+    fn resolve_rejects_absolute_outside_workspace() {
+        let dir = tempdir().unwrap();
+        let err = resolve_in_workspace(dir.path(), "/etc/passwd").unwrap_err();
+        assert!(
+            format!("{err}").contains("outside workspace"),
+            "unexpected error: {err}",
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_rejects_symlink_escaping_workspace() {
+        let dir = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let link = dir.path().join("escape_link");
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        let err = resolve_in_workspace(dir.path(), "escape_link/leaked.txt").unwrap_err();
+        assert!(
+            format!("{err}").contains("symlink"),
+            "expected symlink-escape rejection, got: {err}",
+        );
     }
 
     #[test]
