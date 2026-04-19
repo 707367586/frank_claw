@@ -96,6 +96,26 @@ async fn main() -> Result<()> {
     let permission_gate: Arc<dyn clawx_types::traits::PermissionGatePort> =
         Arc::new(clawx_runtime::permission_repo::PermissionGate::new(db.main.clone()));
 
+    // Built-in tools + rule-based approval gate. Workspace defaults to
+    // `~/.clawx/workspace`; falls back to `$CWD/.clawx/workspace` if HOME
+    // is unavailable. `create_dir_all` is idempotent so subsequent boots
+    // are a no-op.
+    let tool_registry = clawx_service::build_default_tool_registry();
+    let tool_names: Vec<String> = tool_registry
+        .definitions()
+        .into_iter()
+        .map(|d| d.name)
+        .collect();
+    let approval_gate = clawx_service::build_default_approval_gate();
+    let workspace_dir = std::env::var("HOME")
+        .map(|h| std::path::PathBuf::from(h).join(".clawx/workspace"))
+        .unwrap_or_else(|_| {
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join(".clawx/workspace")
+        });
+    tokio::fs::create_dir_all(&workspace_dir).await?;
+
     let runtime = clawx_runtime::Runtime::new(
         db,
         llm,
@@ -108,7 +128,18 @@ async fn main() -> Result<()> {
         Arc::new(config_loader),
     )
     .with_task_registry(task_registry)
-    .with_permission_gate(permission_gate);
+    .with_permission_gate(permission_gate)
+    .with_tools(
+        Arc::new(tool_registry),
+        approval_gate,
+        workspace_dir.clone(),
+    );
+    tracing::info!(
+        tools = tool_names.len(),
+        workspace = %workspace_dir.display(),
+        "tools wired into runtime: {:?}",
+        tool_names,
+    );
     tracing::info!("runtime assembled with task registry + permission gate");
 
     // 6b. Initialize Embedding Service
