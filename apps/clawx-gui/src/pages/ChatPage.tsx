@@ -201,7 +201,7 @@ export default function ChatPage() {
           console.error("Stream error:", err);
           setIsStreaming(false);
           setStreamingContent("");
-          setError("Failed to send message. Please try again.");
+          setError(err.message || "Failed to send message. Please try again.");
         },
       );
     },

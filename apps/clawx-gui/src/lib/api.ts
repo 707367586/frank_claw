@@ -108,6 +108,7 @@ export function connectSSE(
 
       const decoder = new TextDecoder();
       let buffer = "";
+      let currentEvent = "message";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -118,14 +119,41 @@ export function connectSSE(
         buffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") {
-              onDone?.();
-              return;
-            }
-            onMessage(data);
+          if (line === "") {
+            // blank line — frame separator; reset event type
+            currentEvent = "message";
+            continue;
           }
+          if (line.startsWith("event:")) {
+            currentEvent = line.slice(6).trim();
+            continue;
+          }
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+
+          if (data === "[DONE]") {
+            onDone?.();
+            return;
+          }
+
+          if (currentEvent === "error") {
+            let msg = data;
+            try {
+              const parsed = JSON.parse(data) as { error?: string };
+              if (parsed.error) msg = parsed.error;
+            } catch {
+              // keep raw string
+            }
+            handleError(new Error(msg));
+            continue;
+          }
+
+          if (currentEvent === "done") {
+            onDone?.();
+            return;
+          }
+
+          onMessage(data);
         }
       }
       onDone?.();
