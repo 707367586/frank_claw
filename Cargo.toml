@@ -11,6 +11,7 @@ members = [
     "crates/clawx-security",
     "crates/clawx-vault",
     "crates/clawx-scheduler",
+    "crates/clawx-tools",
     "crates/clawx-channel",
     "crates/clawx-hal",
     "crates/clawx-api",
@@ -98,6 +99,7 @@ clawx-kb = { path = "crates/clawx-kb" }
 clawx-security = { path = "crates/clawx-security" }
 clawx-vault = { path = "crates/clawx-vault" }
 clawx-scheduler = { path = "crates/clawx-scheduler" }
+clawx-tools = { path = "crates/clawx-tools" }
 clawx-channel = { path = "crates/clawx-channel" }
 clawx-hal = { path = "crates/clawx-hal" }
 clawx-api = { path = "crates/clawx-api" }
