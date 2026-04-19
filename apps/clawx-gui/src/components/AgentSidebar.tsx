@@ -6,6 +6,8 @@ import IconButton from "./ui/IconButton";
 import Avatar from "./ui/Avatar";
 import AgentTemplateModal from "./AgentTemplateModal";
 import { useAgents } from "../lib/store";
+import { listConversations } from "../lib/api";
+import { lastConvKey } from "../lib/agent-conv-memory";
 import type { Agent } from "../lib/types";
 
 const STATUS_DESC: Record<Agent["status"], string> = {
@@ -40,13 +42,40 @@ export default function AgentSidebar() {
     return !q ? agents : agents.filter((a) => a.name.toLowerCase().includes(q) || (a.role ?? "").toLowerCase().includes(q));
   }, [agents, search]);
 
-  const handleSelect = useCallback((id: string) => {
-    // Switching agent resets the conversation context so the welcome page
-    // shows for the new agent instead of the previously selected one's chat.
+  const handleSelect = useCallback(async (id: string) => {
+    // Switching agents should resume that agent's most recent conversation
+    // instead of forcing the welcome screen. Priority:
+    //   1. localStorage remembers the last viewed conv per agent (survives
+    //      reloads and avoids a network round trip).
+    //   2. Fall back to the newest conversation returned by the server.
+    //   3. If neither exists, drop conv so the welcome page renders.
     const params = new URLSearchParams(searchParams);
     const previous = params.get("agent");
     params.set("agent", id);
-    if (previous !== id) {
+
+    if (previous === id) {
+      setSearchParams(params);
+      return;
+    }
+
+    const remembered =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(lastConvKey(id))
+        : null;
+    if (remembered) {
+      params.set("conv", remembered);
+      setSearchParams(params);
+      return;
+    }
+
+    try {
+      const convs = await listConversations(id);
+      if (convs.length > 0) {
+        params.set("conv", convs[0].id);
+      } else {
+        params.delete("conv");
+      }
+    } catch {
       params.delete("conv");
     }
     setSearchParams(params);

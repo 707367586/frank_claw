@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import AgentSidebar from "../AgentSidebar";
 import { AgentProvider } from "../../lib/store";
+import { lastConvKey } from "../../lib/agent-conv-memory";
 
 vi.mock("../../lib/api", () => ({
   listAgents: vi.fn().mockResolvedValue([
@@ -12,7 +13,12 @@ vi.mock("../../lib/api", () => ({
     { id: "a2", name: "研究助手", role: "Researcher", system_prompt: "",
       model_id: "m1", status: "working", created_at: "", updated_at: "" },
   ]),
+  listConversations: vi.fn().mockResolvedValue([]),
 }));
+
+beforeEach(() => {
+  window.localStorage.clear();
+});
 
 describe("AgentSidebar", () => {
   it("renders plain status labels without fake counts", async () => {
@@ -28,7 +34,83 @@ describe("AgentSidebar", () => {
     expect(screen.queryByText(/2 pending/i)).toBeNull();
   });
 
-  it("drops the active conv query param when switching to a different agent", async () => {
+  it("resumes a remembered conversation when switching to a different agent", async () => {
+    function UrlProbe() {
+      const { search } = useLocation();
+      return <span data-testid="probe">{search}</span>;
+    }
+
+    window.localStorage.setItem(lastConvKey("a2"), "prev-conv-a2");
+
+    render(
+      <MemoryRouter initialEntries={["/?conv=c1&agent=a1"]}>
+        <AgentProvider>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <>
+                  <AgentSidebar />
+                  <UrlProbe />
+                </>
+              }
+            />
+          </Routes>
+        </AgentProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText("研究助手")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /研究助手/ }));
+
+    await waitFor(() => {
+      const search = screen.getByTestId("probe").textContent ?? "";
+      expect(search).toContain("agent=a2");
+      expect(search).toContain("conv=prev-conv-a2");
+    });
+  });
+
+  it("falls back to the server's newest conv when no memory exists", async () => {
+    function UrlProbe() {
+      const { search } = useLocation();
+      return <span data-testid="probe">{search}</span>;
+    }
+
+    const api = await import("../../lib/api");
+    (api.listConversations as any).mockResolvedValueOnce([
+      { id: "server-latest", agent_id: "a2", title: "", created_at: "", updated_at: "" },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={["/?conv=c1&agent=a1"]}>
+        <AgentProvider>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <>
+                  <AgentSidebar />
+                  <UrlProbe />
+                </>
+              }
+            />
+          </Routes>
+        </AgentProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText("研究助手")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /研究助手/ }));
+
+    await waitFor(() => {
+      const search = screen.getByTestId("probe").textContent ?? "";
+      expect(search).toContain("agent=a2");
+      expect(search).toContain("conv=server-latest");
+    });
+    expect(api.listConversations).toHaveBeenCalledWith("a2");
+  });
+
+  it("drops conv when target agent has no prior conversations", async () => {
     function UrlProbe() {
       const { search } = useLocation();
       return <span data-testid="probe">{search}</span>;
@@ -52,7 +134,6 @@ describe("AgentSidebar", () => {
       </MemoryRouter>,
     );
 
-    // wait for agents to load, then click the second agent
     await waitFor(() => expect(screen.getByText("研究助手")).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /研究助手/ }));
 
@@ -90,7 +171,6 @@ describe("AgentSidebar", () => {
     await waitFor(() => expect(screen.getByText("编程助手")).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /编程助手/ }));
 
-    // Same agent re-selected: conv stays.
     await waitFor(() => {
       const search = screen.getByTestId("probe").textContent ?? "";
       expect(search).toContain("agent=a1");

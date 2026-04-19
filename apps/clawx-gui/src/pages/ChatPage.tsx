@@ -8,6 +8,7 @@ import {
   createConversation,
 } from "../lib/api";
 import { useAgents } from "../lib/store";
+import { rememberConvForAgent } from "../lib/agent-conv-memory";
 import type { Agent, Conversation, Message, ModelProvider } from "../lib/types";
 import MessageBubble from "../components/MessageBubble";
 import ChatInput from "../components/ChatInput";
@@ -50,6 +51,11 @@ export default function ChatPage() {
   const modelName = agent
     ? providers.find((p) => p.id === agent.model_id)?.model_name
     : undefined;
+
+  // Persist the current (agent, conv) pair so switching agents can resume.
+  useEffect(() => {
+    rememberConvForAgent(agentId, convId);
+  }, [agentId, convId]);
 
   const [activeTab, setActiveTab] = useState<"conversation" | "artifacts">("conversation");
 
