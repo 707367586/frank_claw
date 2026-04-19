@@ -11,6 +11,7 @@ use std::sync::Arc;
 use axum::http::{HeaderValue, Method};
 use axum::Router;
 use clawx_runtime::Runtime;
+use clawx_tools::ChannelPromptGate;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::info;
 
@@ -53,6 +54,12 @@ pub fn build_router(state: AppState) -> Router {
         .allow_headers(tower_http::cors::Any)
         .max_age(std::time::Duration::from_secs(86400));
 
+    // The prompt gate is owned by the router and shared with whatever path
+    // wires it into the runtime's approval port. Production wiring (i.e.
+    // `RuleApprovalGate::with_prompt(gate.clone())`) is set up by the
+    // service binary; see ADR notes in T11.
+    let gate = ChannelPromptGate::new();
+
     Router::new()
         .nest("/agents", routes::agents::router())
         .nest("/conversations", routes::conversations::router())
@@ -73,6 +80,21 @@ pub fn build_router(state: AppState) -> Router {
         ))
         .layer(cors)
         .with_state(shared)
+        // Tools approval sits outside the AppState-bound middleware chain:
+        // the gate is its own state, and the endpoint is a short POST with
+        // no token dependency (the SwiftUI app reaches it via the loopback
+        // UDS/TCP socket that the service binds).
+        .merge(routes::tools::router(gate))
+}
+
+/// Test harness: build an approval-only router wired to a fresh
+/// `ChannelPromptGate`. The caller can register pending requests on `gate`
+/// via `open_request_for_test`, fire HTTP requests at the returned router,
+/// and assert on the pending future's resolution.
+pub fn build_router_for_tests() -> (Router, Arc<ChannelPromptGate>) {
+    let gate = ChannelPromptGate::new();
+    let router = routes::tools::router(gate.clone());
+    (router, gate)
 }
 
 /// Start the API server on a Unix Domain Socket.

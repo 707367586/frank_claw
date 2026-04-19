@@ -7,6 +7,7 @@ edition.workspace = true
 clawx-types = { workspace = true }
 clawx-runtime = { workspace = true }
 clawx-llm = { workspace = true }
+clawx-tools = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
 axum = { workspace = true }
 futures = { workspace = true }
@@ -26,6 +27,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 tempfile = "3"
 async-trait = { workspace = true }
+axum-test = "20"
 clawx-config = { workspace = true }
 clawx-llm = { workspace = true }
 clawx-memory = { workspace = true }

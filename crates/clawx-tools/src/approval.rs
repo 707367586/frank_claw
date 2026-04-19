@@ -14,7 +14,9 @@
 use async_trait::async_trait;
 use clawx_types::error::Result;
 use clawx_types::ids::AgentId;
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::{oneshot, Mutex};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApprovalDecision {
@@ -195,6 +197,72 @@ fn glob_match(pattern: &str, text: &str) -> bool {
         }
     }
     rec(pattern.as_bytes(), text.as_bytes())
+}
+
+/// HTTP-backed prompt delegate.
+///
+/// `RuleApprovalGate::with_prompt(Arc<ChannelPromptGate>)` delegates `Prompt`
+/// tier decisions here. Each pending request is tracked by a random `Uuid`
+/// and a `oneshot::Sender<ApprovalDecision>`. The API handler at
+/// `POST /tools/approval/:id` calls `resolve(id, decision)` to unblock the
+/// tool loop.
+pub struct ChannelPromptGate {
+    pending: Mutex<HashMap<uuid::Uuid, oneshot::Sender<ApprovalDecision>>>,
+}
+
+impl ChannelPromptGate {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            pending: Mutex::new(HashMap::new()),
+        })
+    }
+
+    /// Called by the API handler once the user has answered.
+    ///
+    /// Returns `true` if the id was known (and the pending caller will now
+    /// observe `decision`), `false` if the id was not pending — either
+    /// expired, unknown, or already resolved.
+    pub async fn resolve(&self, id: uuid::Uuid, decision: ApprovalDecision) -> bool {
+        if let Some(tx) = self.pending.lock().await.remove(&id) {
+            let _ = tx.send(decision);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Test-only helper: register a pending request and hand back the id +
+    /// the receiver the caller awaits to observe the decision set via
+    /// `resolve`. Production callers enter via `PromptGate::ask`.
+    #[doc(hidden)]
+    pub async fn open_request_for_test(&self) -> (uuid::Uuid, oneshot::Receiver<ApprovalDecision>) {
+        let id = uuid::Uuid::new_v4();
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().await.insert(id, tx);
+        (id, rx)
+    }
+}
+
+#[async_trait]
+impl PromptGate for ChannelPromptGate {
+    async fn ask(
+        &self,
+        _agent_id: &AgentId,
+        _tool: &str,
+        _args: &serde_json::Value,
+    ) -> Result<ApprovalDecision> {
+        let id = uuid::Uuid::new_v4();
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().await.insert(id, tx);
+        // TODO(phase 2): publish an event so the GUI can fetch pending prompts.
+        // For now the GUI polls GET /tools/approval (to be added in GUI plan).
+        match rx.await {
+            Ok(d) => Ok(d),
+            Err(_) => Ok(ApprovalDecision::Deny {
+                reason: "prompt channel closed".into(),
+            }),
+        }
+    }
 }
 
 #[cfg(test)]

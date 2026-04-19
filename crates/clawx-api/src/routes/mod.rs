@@ -7,4 +7,5 @@ pub mod models;
 pub mod skills;
 pub mod system;
 pub mod tasks;
+pub mod tools;
 pub mod vault;

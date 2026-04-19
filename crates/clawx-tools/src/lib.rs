@@ -21,8 +21,8 @@ use clawx_types::llm::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
 pub use approval::{
-    ApprovalDecision, ApprovalMode, ApprovalPort, ApprovalRule, AutoApprovalGate, PromptGate,
-    RuleApprovalGate,
+    ApprovalDecision, ApprovalMode, ApprovalPort, ApprovalRule, AutoApprovalGate,
+    ChannelPromptGate, PromptGate, RuleApprovalGate,
 };
 
 /// Outcome of a tool invocation. `content` is the string we hand back to
