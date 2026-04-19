@@ -33,28 +33,42 @@ impl AnthropicProvider {
     }
 
     fn build_body(&self, request: &CompletionRequest) -> AnthropicRequestBody {
-        // Separate system message from conversation messages
         let mut system: Option<String> = None;
-        let mut messages = Vec::new();
+        let mut messages: Vec<AnthropicMessage> = Vec::new();
 
         for msg in &request.messages {
             match msg.role {
-                MessageRole::System => {
-                    system = Some(msg.content.clone());
-                }
-                _ => {
+                MessageRole::System => system = Some(msg.content.clone()),
+                MessageRole::User | MessageRole::Assistant | MessageRole::Tool => {
+                    let role = match msg.role {
+                        MessageRole::Assistant => "assistant",
+                        // Tool-result messages ride on `user` per Anthropic's schema.
+                        _ => "user",
+                    };
+                    let content = if msg.blocks.is_empty() {
+                        AnthropicContentField::Text(msg.content.clone())
+                    } else {
+                        AnthropicContentField::Blocks(
+                            msg.blocks.iter().map(to_anthropic_block).collect(),
+                        )
+                    };
                     messages.push(AnthropicMessage {
-                        role: match msg.role {
-                            MessageRole::User => "user".to_string(),
-                            MessageRole::Assistant => "assistant".to_string(),
-                            MessageRole::Tool => "user".to_string(), // Anthropic uses user for tool results
-                            MessageRole::System => unreachable!(),
-                        },
-                        content: msg.content.clone(),
+                        role: role.to_string(),
+                        content,
                     });
                 }
             }
         }
+
+        let tools = request.tools.as_ref().map(|defs| {
+            defs.iter()
+                .map(|d| AnthropicTool {
+                    name: d.name.clone(),
+                    description: d.description.clone(),
+                    input_schema: d.parameters.clone(),
+                })
+                .collect()
+        });
 
         AnthropicRequestBody {
             model: request.model.clone(),
@@ -63,6 +77,7 @@ impl AnthropicProvider {
             messages,
             temperature: request.temperature,
             stream: request.stream,
+            tools,
         }
     }
 }
@@ -78,34 +93,124 @@ struct AnthropicRequestBody {
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<AnthropicTool>>,
+}
+
+#[derive(Debug, Serialize)]
+struct AnthropicTool {
+    name: String,
+    description: String,
+    input_schema: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+struct AnthropicMessage {
+    role: String,
+    content: AnthropicContentField,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum AnthropicContentField {
+    Text(String),
+    Blocks(Vec<AnthropicBlock>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct AnthropicMessage {
-    role: String,
-    content: String,
+#[serde(tag = "type", rename_all = "snake_case")]
+enum AnthropicBlock {
+    Text {
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        is_error: bool,
+    },
+}
+
+fn to_anthropic_block(b: &clawx_types::llm::ContentBlock) -> AnthropicBlock {
+    use clawx_types::llm::ContentBlock::*;
+    match b {
+        Text { text } => AnthropicBlock::Text { text: text.clone() },
+        ToolUse { id, name, input } => AnthropicBlock::ToolUse {
+            id: id.clone(),
+            name: name.clone(),
+            input: input.clone(),
+        },
+        ToolResult {
+            tool_use_id,
+            content,
+            is_error,
+        } => AnthropicBlock::ToolResult {
+            tool_use_id: tool_use_id.clone(),
+            content: content.clone(),
+            is_error: *is_error,
+        },
+    }
 }
 
 #[derive(Debug, Deserialize)]
 struct AnthropicResponse {
-    content: Vec<AnthropicContent>,
+    #[allow(dead_code)]
+    id: String,
+    content: Vec<AnthropicBlock>,
     stop_reason: Option<String>,
     usage: AnthropicUsage,
     model: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct AnthropicContent {
-    #[serde(rename = "type")]
-    #[allow(dead_code)]
-    content_type: String,
-    text: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
 struct AnthropicUsage {
     input_tokens: u32,
     output_tokens: u32,
+}
+
+fn to_llm_response(raw: AnthropicResponse) -> LlmResponse {
+    let mut text = String::new();
+    let mut tool_calls: Vec<ToolCall> = Vec::new();
+    for block in raw.content {
+        match block {
+            AnthropicBlock::Text { text: t } => {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(&t);
+            }
+            AnthropicBlock::ToolUse { id, name, input } => {
+                tool_calls.push(ToolCall {
+                    id,
+                    name,
+                    arguments: input,
+                });
+            }
+            AnthropicBlock::ToolResult { .. } => {
+                // Providers never emit tool_result back to us; ignore.
+            }
+        }
+    }
+    LlmResponse {
+        content: text,
+        stop_reason: map_stop_reason(raw.stop_reason.as_deref()),
+        tool_calls,
+        usage: TokenUsage {
+            prompt_tokens: raw.usage.input_tokens,
+            completion_tokens: raw.usage.output_tokens,
+            total_tokens: raw.usage.input_tokens + raw.usage.output_tokens,
+        },
+        metadata: Some(ProviderMetadata {
+            provider: "anthropic".into(),
+            model_id: raw.model,
+            extra: None,
+        }),
+    }
 }
 
 fn map_stop_reason(reason: Option<&str>) -> StopReason {
@@ -152,33 +257,12 @@ impl LlmProvider for AnthropicProvider {
             )));
         }
 
-        let api_resp: AnthropicResponse = resp
+        let raw: AnthropicResponse = resp
             .json()
             .await
             .map_err(|e| ClawxError::LlmProvider(format!("anthropic parse error: {}", e)))?;
 
-        let content = api_resp
-            .content
-            .iter()
-            .filter_map(|c| c.text.as_deref())
-            .collect::<Vec<_>>()
-            .join("");
-
-        Ok(LlmResponse {
-            content,
-            stop_reason: map_stop_reason(api_resp.stop_reason.as_deref()),
-            tool_calls: vec![],
-            usage: TokenUsage {
-                prompt_tokens: api_resp.usage.input_tokens,
-                completion_tokens: api_resp.usage.output_tokens,
-                total_tokens: api_resp.usage.input_tokens + api_resp.usage.output_tokens,
-            },
-            metadata: Some(ProviderMetadata {
-                provider: "anthropic".to_string(),
-                model_id: api_resp.model,
-                extra: None,
-            }),
-        })
+        Ok(to_llm_response(raw))
     }
 
     async fn stream(
@@ -198,7 +282,9 @@ impl LlmProvider for AnthropicProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ClawxError::LlmProvider(format!("anthropic stream request failed: {}", e)))?;
+            .map_err(|e| {
+                ClawxError::LlmProvider(format!("anthropic stream request failed: {}", e))
+            })?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -244,5 +330,87 @@ impl LlmProvider for AnthropicProvider {
         };
 
         self.complete(request).await.map(|_| ())
+    }
+}
+
+#[cfg(test)]
+mod tool_use_tests {
+    use super::*;
+    use clawx_types::llm::{ContentBlock, ToolDefinition};
+
+    fn dummy_provider() -> AnthropicProvider {
+        AnthropicProvider::new("sk-test".into(), "http://127.0.0.1".into())
+    }
+
+    #[test]
+    fn build_body_serializes_tools() {
+        let req = CompletionRequest {
+            model: "claude-sonnet-4-6".into(),
+            messages: vec![Message {
+                role: MessageRole::User,
+                content: "hi".into(),
+                blocks: vec![],
+                tool_call_id: None,
+            }],
+            tools: Some(vec![ToolDefinition {
+                name: "fs_mkdir".into(),
+                description: "Create a directory".into(),
+                parameters: serde_json::json!({"type":"object"}),
+            }]),
+            temperature: None,
+            max_tokens: Some(256),
+            stream: false,
+        };
+        let body = dummy_provider().build_body(&req);
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["tools"][0]["name"], "fs_mkdir");
+        assert_eq!(json["tools"][0]["input_schema"]["type"], "object");
+    }
+
+    #[test]
+    fn build_body_serializes_tool_result_message_as_user_block() {
+        let req = CompletionRequest {
+            model: "claude-sonnet-4-6".into(),
+            messages: vec![Message {
+                role: MessageRole::Tool,
+                content: String::new(),
+                blocks: vec![ContentBlock::ToolResult {
+                    tool_use_id: "call_1".into(),
+                    content: "ok".into(),
+                    is_error: false,
+                }],
+                tool_call_id: Some("call_1".into()),
+            }],
+            tools: None,
+            temperature: None,
+            max_tokens: Some(256),
+            stream: false,
+        };
+        let body = dummy_provider().build_body(&req);
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["messages"][0]["role"], "user");
+        assert_eq!(json["messages"][0]["content"][0]["type"], "tool_result");
+        assert_eq!(json["messages"][0]["content"][0]["tool_use_id"], "call_1");
+    }
+
+    #[test]
+    fn parse_response_extracts_tool_use_blocks() {
+        let raw = serde_json::json!({
+            "id": "msg_1",
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "tool_use",
+            "usage": {"input_tokens": 5, "output_tokens": 7},
+            "content": [
+                {"type": "text", "text": "I'll create it."},
+                {"type": "tool_use", "id": "call_1", "name": "fs_mkdir",
+                 "input": {"path": "/tmp/x"}}
+            ]
+        });
+        let resp: AnthropicResponse = serde_json::from_value(raw).unwrap();
+        let mapped = to_llm_response(resp);
+        assert_eq!(mapped.tool_calls.len(), 1);
+        assert_eq!(mapped.tool_calls[0].name, "fs_mkdir");
+        assert_eq!(mapped.stop_reason, StopReason::ToolUse);
+        assert!(mapped.content.contains("I'll create it."));
     }
 }
