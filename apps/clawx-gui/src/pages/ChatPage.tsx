@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   listMessages,
@@ -9,6 +9,15 @@ import {
 } from "../lib/api";
 import { useAgents } from "../lib/store";
 import { rememberConvForAgent } from "../lib/agent-conv-memory";
+import {
+  appendDelta,
+  beginStream,
+  clearStream,
+  failStream,
+  finishStream,
+  getStreamState,
+  subscribe,
+} from "../lib/chat-stream-store";
 import type { Agent, Conversation, Message, ModelProvider } from "../lib/types";
 import MessageBubble from "../components/MessageBubble";
 import ChatInput from "../components/ChatInput";
@@ -24,10 +33,20 @@ export default function ChatPage() {
   const agentId = searchParams.get("agent");
 
   const [messages, setMessages] = useState<Message[]>([]);
-  const [streamingContent, setStreamingContent] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Live stream state for the currently viewed conv, sourced from the global
+  // store so that a stream started in another (now-unmounted) ChatPage
+  // instance keeps rendering its typing indicator + accumulated text when the
+  // user navigates back.
+  const streamState = useSyncExternalStore(
+    subscribe,
+    () => getStreamState(convId),
+    () => getStreamState(convId),
+  );
+  const isStreaming = streamState.isStreaming;
+  const streamingContent = streamState.content;
 
   // Conversation and agent info for header
   const [_conversation, setConversation] = useState<Conversation | null>(null);
@@ -79,16 +98,6 @@ export default function ChatPage() {
     [],
   );
 
-  const refreshMessages = useCallback(async (id: string) => {
-    try {
-      const msgs = await listMessages(id);
-      setMessages(msgs);
-    } catch (e) {
-      console.error("Failed to refresh messages:", e);
-      setError("Failed to refresh messages. Please reload.");
-    }
-  }, []);
-
   // Resolve selected agent from agentId param
   useEffect(() => {
     if (!agentId || !agentsLoaded) return;
@@ -112,15 +121,11 @@ export default function ChatPage() {
     streamingConvRef.current = null;
 
     // Deliberately do NOT abort any in-flight stream when the conversation
-    // changes — switching agents should leave the previous agent's stream
-    // running in the background. The server-side SSE accumulator persists
-    // the final assistant reply on completion (see conversations.rs), so
-    // listMessages on return picks up the full text. The visible "typing"
-    // indicator, however, is local to this ChatPage instance — clear it
-    // while we're viewing a different conv.
+    // changes. The global chat-stream-store keeps the delta feed alive so
+    // returning to this conv (possibly in another ChatPage instance) picks
+    // up the typing indicator + accumulated content automatically via
+    // useSyncExternalStore above. We only drop our local controller ref.
     abortRef.current = null;
-    setIsStreaming(false);
-    setStreamingContent("");
 
     if (!convId) {
       setMessages([]);
@@ -185,8 +190,7 @@ export default function ChatPage() {
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, userMsg]);
-      setIsStreaming(true);
-      setStreamingContent("");
+      beginStream(convId);
 
       abortRef.current = sendMessageStream(
         convId,
@@ -195,27 +199,31 @@ export default function ChatPage() {
           try {
             const parsed = JSON.parse(data) as { delta?: string; content?: string };
             const text = parsed.delta ?? parsed.content;
-            if (text) {
-              setStreamingContent((prev) => prev + text);
-            }
+            if (text) appendDelta(convId, text);
           } catch {
-            setStreamingContent((prev) => prev + data);
+            appendDelta(convId, data);
           }
         },
         async () => {
-          setIsStreaming(false);
-          setStreamingContent("");
-          await refreshMessages(convId);
+          finishStream(convId);
+          try {
+            const msgs = await listMessages(convId);
+            setMessages(msgs);
+          } catch (e) {
+            console.error("Failed to refresh messages:", e);
+          }
+          // Once messages include the persisted assistant reply, drop the
+          // store slot so the typing indicator doesn't reappear.
+          clearStream(convId);
         },
         (err: Error) => {
           console.error("Stream error:", err);
-          setIsStreaming(false);
-          setStreamingContent("");
+          failStream(convId, err.message || "Failed to send message. Please try again.");
           setError(err.message || "Failed to send message. Please try again.");
         },
       );
     },
-    [refreshMessages],
+    [],
   );
 
   const handleSend = useCallback(
@@ -309,21 +317,15 @@ export default function ChatPage() {
                     <SourceReferences refs={m.refs ?? []} />
                   </div>
                 ))}
-                {isStreaming && streamingContent && (
-                  <MessageBubble
-                    message={{
-                      id: "streaming",
-                      conversation_id: convId!,
-                      role: "assistant",
-                      content: streamingContent,
-                      created_at: new Date().toISOString(),
-                    }}
-                  />
-                )}
-                {isStreaming && !streamingContent && (
+                {isStreaming && (
                   <div className="msg msg--assistant">
-                    <div className="msg__bubble">
-                      <span className="typing-indicator"><span /><span /><span /></span>
+                    <div className="msg__bubble msg__bubble--streaming">
+                      {streamingContent}
+                      <span className="typing-indicator" aria-label="正在生成">
+                        <span />
+                        <span />
+                        <span />
+                      </span>
                     </div>
                   </div>
                 )}

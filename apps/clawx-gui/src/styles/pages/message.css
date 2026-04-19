@@ -9,6 +9,8 @@
 }
 .msg--user .msg__bubble { background: var(--primary); color: var(--primary-foreground); border-bottom-right-radius: 6px; }
 .msg--assistant .msg__bubble { background: transparent; color: var(--foreground); padding: 4px 0; max-width: 100%; }
+.msg__bubble--streaming { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.msg__bubble--streaming .typing-indicator { padding: 0; }
 .msg--assistant .msg__bubble pre { background: var(--card); border: 1px solid var(--border); padding: 12px; border-radius: 8px; overflow: auto; font-size: 12px; }
 
 .src-refs { list-style: none; margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }

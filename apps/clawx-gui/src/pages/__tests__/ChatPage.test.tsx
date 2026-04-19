@@ -224,6 +224,42 @@ describe("ChatPage welcome-page send", () => {
 });
 
 describe("ChatPage background streaming", () => {
+  it("renders the live typing indicator + partial text when returning to a streaming conv", async () => {
+    const { beginStream, appendDelta, __resetStreamStore } = await import(
+      "../../lib/chat-stream-store"
+    );
+    __resetStreamStore();
+
+    // Simulate: a stream for `c-bg` has been running all along and has
+    // accumulated some deltas while the user was off doing something else.
+    beginStream("c-bg");
+    appendDelta("c-bg", "生成中…");
+
+    const api = await import("../../lib/api");
+    (api.listMessages as any).mockReset();
+    (api.listMessages as any).mockResolvedValue([]);
+    (api.listConversations as any).mockReset();
+    (api.listConversations as any).mockResolvedValue([
+      { id: "c-bg", agent_id: "a1", title: "", created_at: "", updated_at: "" },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={["/?conv=c-bg&agent=a1"]}>
+        <AgentProvider>
+          <Routes>
+            <Route path="/" element={<ChatPage />} />
+          </Routes>
+        </AgentProvider>
+      </MemoryRouter>,
+    );
+
+    // Partial assistant text already in store renders instantly — no extra
+    // network turn required.
+    await waitFor(() =>
+      expect(screen.getByText("生成中…")).toBeInTheDocument(),
+    );
+  });
+
   it("does not abort an in-flight stream when the user navigates to another conv", async () => {
     const api = await import("../../lib/api");
     const abortController = new AbortController();
