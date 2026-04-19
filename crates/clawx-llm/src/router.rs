@@ -43,6 +43,11 @@ impl LlmRouter {
         }
     }
 
+    /// Return the keys of currently registered providers.
+    pub fn provider_keys(&self) -> impl Iterator<Item = &str> {
+        self.providers.keys().map(|s| s.as_str())
+    }
+
     /// Determine which provider key to use for a given model name.
     pub fn resolve_key(&self, model: &str) -> &str {
         if model.starts_with("claude-") {
