@@ -304,6 +304,9 @@ async fn main() -> Result<()> {
     let state = clawx_api::AppState {
         runtime,
         control_token,
+        // TCP dev mode: enable the `dev-token` bypass so the browser-served
+        // UI can authenticate without reading the on-disk control token.
+        dev_mode: config.api.dev_port.is_some(),
     };
     let router = clawx_api::build_router(state);
 

@@ -20,6 +20,13 @@ use tracing::info;
 pub struct AppState {
     pub runtime: Runtime,
     pub control_token: String,
+    /// True when the server is bound to a TCP port for local development.
+    /// In this mode the auth middleware additionally accepts the literal
+    /// `dev-token` so the Vite-served web UI (which cannot read the on-disk
+    /// control token) can talk to the API without extra plumbing. The UDS
+    /// production path leaves this `false`.
+    #[doc(hidden)]
+    pub dev_mode: bool,
 }
 
 /// Build the complete API router with all route groups.
@@ -147,6 +154,7 @@ mod tests {
                 Arc::new(clawx_config::ConfigLoader::with_defaults()),
             ),
             control_token: "test-token-123".to_string(),
+            dev_mode: false,
         }
     }
 

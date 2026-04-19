@@ -38,7 +38,12 @@ pub async fn require_token(
                     .zip(expected.iter())
                     .fold(0u8, |acc, (a, b)| acc | (a ^ b))
                     == 0;
-            if matches {
+            // In TCP dev mode, also accept the literal `dev-token` so the
+            // Vite-served web UI can authenticate without reading the
+            // on-disk control token. The UDS production path never sets
+            // dev_mode, so this bypass is dev-only by construction.
+            let dev_match = state.dev_mode && token == b"dev-token";
+            if matches || dev_match {
                 Ok(next.run(req).await)
             } else {
                 Err(StatusCode::UNAUTHORIZED)

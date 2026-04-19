@@ -30,6 +30,7 @@ async fn make_state() -> clawx_api::AppState {
             Arc::new(clawx_config::ConfigLoader::with_defaults()),
         ),
         control_token: "integration-test-token".to_string(),
+        dev_mode: false,
     }
 }
 
@@ -54,6 +55,7 @@ async fn make_state_with_real_memory() -> clawx_api::AppState {
             Arc::new(clawx_config::ConfigLoader::with_defaults()),
         ),
         control_token: "integration-test-token".to_string(),
+        dev_mode: false,
     }
 }
 
@@ -517,6 +519,7 @@ async fn make_state_with_real_vault() -> clawx_api::AppState {
             Arc::new(clawx_config::ConfigLoader::with_defaults()),
         ),
         control_token: "integration-test-token".to_string(),
+        dev_mode: false,
     }
 }
 
@@ -537,6 +540,7 @@ async fn make_state_with_real_kb() -> clawx_api::AppState {
             Arc::new(clawx_config::ConfigLoader::with_defaults()),
         ),
         control_token: "integration-test-token".to_string(),
+        dev_mode: false,
     }
 }
 
@@ -560,6 +564,7 @@ async fn make_state_with_real_security() -> clawx_api::AppState {
             Arc::new(clawx_config::ConfigLoader::with_defaults()),
         ),
         control_token: "integration-test-token".to_string(),
+        dev_mode: false,
     }
 }
 
@@ -1988,6 +1993,7 @@ async fn make_state_with_autonomy() -> clawx_api::AppState {
         .with_task_registry(task_registry)
         .with_permission_gate(permission_gate),
         control_token: "integration-test-token".to_string(),
+        dev_mode: false,
     }
 }
 
