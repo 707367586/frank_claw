@@ -57,9 +57,8 @@ pub async fn run_turn(
         "assembled context"
     );
 
-    // Step 2: Build completion request — inject recalled memories into system prompt
+    // Step 2: Build completion request — inject recalled memories into system prompt.
     let mut messages = Vec::new();
-
     let system_prompt = if ctx.recalled_memories.is_empty() {
         ctx.system_prompt
     } else {
@@ -74,7 +73,6 @@ pub async fn run_turn(
             ctx.system_prompt, memory_block
         )
     };
-
     if !system_prompt.is_empty() {
         messages.push(Message {
             role: MessageRole::System,
@@ -83,11 +81,7 @@ pub async fn run_turn(
             tool_call_id: None,
         });
     }
-
-    // Conversation history
     messages.extend(ctx.conversation_history);
-
-    // Current user message
     messages.push(Message {
         role: MessageRole::User,
         content: user_input.to_string(),
@@ -95,28 +89,63 @@ pub async fn run_turn(
         tool_call_id: None,
     });
 
-    let request = CompletionRequest {
-        model: "default".to_string(),
-        messages: messages.clone(),
-        tools: None,
-        temperature: None,
-        max_tokens: Some(4096),
-        stream: false,
-    };
+    // Step 3: With tools → iterate. Without tools → legacy single call.
+    let (final_content, tool_calls_made, usage) =
+        match (&runtime.tools, &runtime.approval, &runtime.workspace) {
+            (Some(tools), Some(approval), Some(workspace)) => {
+                let exec_ctx = clawx_tools::ToolExecCtx {
+                    agent_id: *agent_id,
+                    workspace: workspace.clone(),
+                    approval: approval.clone(),
+                };
+                let outcome = crate::tool_loop::run_with_tools(
+                    runtime.llm.clone(),
+                    tools.clone(),
+                    exec_ctx,
+                    agent_id,
+                    messages.clone(),
+                    "default".into(),
+                    crate::tool_loop::ToolLoopConfig {
+                        max_iterations: runtime.max_tool_iterations,
+                        max_tokens: 4096,
+                    },
+                )
+                .await?;
+                (
+                    outcome.final_content,
+                    outcome.tool_calls_made,
+                    outcome.usage,
+                )
+            }
+            _ => {
+                let request = CompletionRequest {
+                    model: "default".to_string(),
+                    messages: messages.clone(),
+                    tools: None,
+                    temperature: None,
+                    max_tokens: Some(4096),
+                    stream: false,
+                };
+                let response = runtime.llm.complete(request).await?;
+                (
+                    response.content,
+                    response.tool_calls.len() as u32,
+                    response.usage,
+                )
+            }
+        };
 
-    // Step 3: Call LLM
-    let response = runtime.llm.complete(request).await?;
-
-    // Step 4: Extract memories from the last few messages (background, best-effort)
-    let extraction_messages = build_extraction_window(&messages, user_input, &response.content);
+    // Step 4: Extract memories (unchanged — operates on user/assistant text).
+    let extraction_messages = build_extraction_window(&messages, user_input, &final_content);
     let agent_id_owned = *agent_id;
     let extractor = runtime.memory_extractor.clone();
     let memory_svc = runtime.memory.clone();
-
     tokio::spawn(async move {
-        match extractor.extract(&agent_id_owned, &extraction_messages).await {
+        match extractor
+            .extract(&agent_id_owned, &extraction_messages)
+            .await
+        {
             Ok(candidates) if !candidates.is_empty() => {
-                debug!(count = candidates.len(), "extracted memory candidates");
                 for candidate in candidates {
                     let entry = MemoryEntry::from_candidate(candidate, Some(agent_id_owned));
                     if let Err(e) = memory_svc.store(entry).await {
@@ -124,19 +153,16 @@ pub async fn run_turn(
                     }
                 }
             }
-            Ok(_) => {} // no candidates
-            Err(e) => {
-                warn!("memory extraction failed: {}", e);
-            }
+            Ok(_) => {}
+            Err(e) => warn!("memory extraction failed: {}", e),
         }
     });
 
     info!(%agent_id, "agent loop: turn complete");
-
     Ok(AgentResponse {
-        content: response.content,
-        tool_calls_made: response.tool_calls.len() as u32,
-        tokens_used: response.usage,
+        content: final_content,
+        tool_calls_made,
+        tokens_used: usage,
     })
 }
 
@@ -281,7 +307,9 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
 
-        let resp = run_turn(&rt, &agent_id, &conversation, "Hello").await.unwrap();
+        let resp = run_turn(&rt, &agent_id, &conversation, "Hello")
+            .await
+            .unwrap();
         assert!(resp.content.contains("[stub]"));
         assert_eq!(resp.tool_calls_made, 0);
     }

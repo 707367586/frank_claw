@@ -16,14 +16,16 @@ pub mod lifecycle;
 pub mod model_repo;
 pub mod notification_repo;
 pub mod permission_repo;
-pub mod skill_loader;
-pub mod skill_repo;
 pub mod run_recovery;
 pub mod seed;
+pub mod skill_loader;
+pub mod skill_repo;
 pub mod task_repo;
+pub mod tool_loop;
 
 use std::sync::Arc;
 
+use clawx_tools::{ApprovalPort, ToolRegistry};
 use clawx_types::traits::*;
 
 /// The Runtime holds all service trait objects and wires them together.
@@ -43,6 +45,15 @@ pub struct Runtime {
     pub task_registry: Option<Arc<dyn TaskRegistryPort>>,
     /// v0.2: Permission gate for risk-based access control.
     pub permission_gate: Option<Arc<dyn PermissionGatePort>>,
+    /// Built-in tool registry. When `None`, `run_turn` degrades to a plain
+    /// single-call LLM request (legacy behavior).
+    pub tools: Option<Arc<ToolRegistry>>,
+    /// Approval gate for tool invocations. Required whenever `tools` is set.
+    pub approval: Option<Arc<dyn ApprovalPort>>,
+    /// Workspace root. All tool IO resolves here. Required when `tools` is set.
+    pub workspace: Option<std::path::PathBuf>,
+    /// Max tool iterations per turn (safety brake). Default 10.
+    pub max_tool_iterations: u32,
 }
 
 impl Runtime {
@@ -70,6 +81,10 @@ impl Runtime {
             config,
             task_registry: None,
             permission_gate: None,
+            tools: None,
+            approval: None,
+            workspace: None,
+            max_tool_iterations: 10,
         }
     }
 
@@ -82,6 +97,27 @@ impl Runtime {
     /// Set the permission gate (v0.2 autonomy).
     pub fn with_permission_gate(mut self, gate: Arc<dyn PermissionGatePort>) -> Self {
         self.permission_gate = Some(gate);
+        self
+    }
+
+    /// Wire the built-in tool registry + approval gate + workspace root.
+    /// All three must be provided together — when any is missing, the agent
+    /// loop degrades to a single-call LLM request (legacy behavior).
+    pub fn with_tools(
+        mut self,
+        tools: Arc<ToolRegistry>,
+        approval: Arc<dyn ApprovalPort>,
+        workspace: std::path::PathBuf,
+    ) -> Self {
+        self.tools = Some(tools);
+        self.approval = Some(approval);
+        self.workspace = Some(workspace);
+        self
+    }
+
+    /// Override the per-turn tool iteration cap.
+    pub fn with_max_tool_iterations(mut self, n: u32) -> Self {
+        self.max_tool_iterations = n;
         self
     }
 }

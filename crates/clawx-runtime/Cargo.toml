@@ -14,6 +14,7 @@ clawx-eventbus = { workspace = true }
 clawx-vault = { workspace = true }
 clawx-scheduler = { workspace = true }
 clawx-channel = { workspace = true }
+clawx-tools = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 sqlx = { workspace = true }
 async-trait = { workspace = true }
@@ -37,4 +38,8 @@ clawx-scheduler = { workspace = true }
 clawx-vault = { workspace = true }
 clawx-llm = { workspace = true }
 clawx-config = { workspace = true }
+clawx-tools = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+tempfile = "3"
 sqlx = { workspace = true }
