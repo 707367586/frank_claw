@@ -8,8 +8,10 @@ mod middleware;
 
 use std::sync::Arc;
 
+use axum::http::{HeaderValue, Method};
 use axum::Router;
 use clawx_runtime::Runtime;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::info;
 
 /// Application state shared across all handlers.
@@ -20,8 +22,37 @@ pub struct AppState {
 }
 
 /// Build the complete API router with all route groups.
+///
+/// A permissive CORS layer is installed so the Vite dev server and the Tauri
+/// webview (which load on `http://localhost:1420` / `tauri://localhost`) can
+/// reach the API running on `http://127.0.0.1:9090`. Browser same-origin policy
+/// otherwise blocks every preflight. The auth middleware still gates every
+/// non-OPTIONS request by bearer token.
 pub fn build_router(state: AppState) -> Router {
     let shared = Arc::new(state);
+
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
+            origin
+                .to_str()
+                .ok()
+                .map(|s| {
+                    s.starts_with("http://localhost")
+                        || s.starts_with("http://127.0.0.1")
+                        || s.starts_with("tauri://")
+                })
+                .unwrap_or(false)
+        }))
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers(tower_http::cors::Any)
+        .max_age(std::time::Duration::from_secs(86400));
+
     Router::new()
         .nest("/agents", routes::agents::router())
         .nest("/conversations", routes::conversations::router())
@@ -40,6 +71,7 @@ pub fn build_router(state: AppState) -> Router {
             shared.clone(),
             middleware::auth::require_token,
         ))
+        .layer(cors)
         .with_state(shared)
 }
 

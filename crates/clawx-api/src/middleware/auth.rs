@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use axum::extract::State;
-use axum::http::{Request, StatusCode};
+use axum::http::{Method, Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
 
@@ -15,6 +15,13 @@ pub async fn require_token(
     req: Request<axum::body::Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    // CORS preflight requests cannot include Authorization headers; let them
+    // through so the browser receives the CORS response and follows up with
+    // the real (authenticated) request.
+    if req.method() == Method::OPTIONS {
+        return Ok(next.run(req).await);
+    }
+
     let auth_header = req
         .headers()
         .get("Authorization")

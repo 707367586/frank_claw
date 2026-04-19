@@ -132,7 +132,7 @@ export default function AddProviderModal({ open, onClose, onSaved, initial }: Pr
     <Dialog open={open} onClose={onClose} width={520}>
       <header className="agent-template__head">
         <h2>{initial ? "编辑模型 Provider" : "添加模型 Provider"}</h2>
-        <p>配置一个新的 LLM 服务端，保存后需重启服务进程生效。</p>
+        <p>配置一个 LLM 服务端，保存后即刻生效。</p>
       </header>
 
       <label className="field">
