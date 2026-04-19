@@ -69,11 +69,13 @@ pub async fn parse_task_from_natural_language(
             Message {
                 role: MessageRole::System,
                 content: TASK_PARSING_PROMPT.to_string(),
+                blocks: vec![],
                 tool_call_id: None,
             },
             Message {
                 role: MessageRole::User,
                 content: user_input.to_string(),
+                blocks: vec![],
                 tool_call_id: None,
             },
         ],

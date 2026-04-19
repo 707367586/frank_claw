@@ -62,6 +62,12 @@ pub enum ClawxError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("tool error: {0}")]
+    Tool(String),
+
+    #[error("approval denied: {0}")]
+    Approval(String),
 }
 
 /// Convenience Result alias used throughout ClawX.

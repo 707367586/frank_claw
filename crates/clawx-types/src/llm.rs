@@ -14,12 +14,43 @@ pub enum MessageRole {
 }
 
 /// A single message in an LLM conversation.
+///
+/// `content` remains the plain-text channel for back-compat with older code paths.
+/// `blocks` is additive: when non-empty it carries structured content
+/// (`tool_use`, `tool_result`, future `image`) that providers serialize
+/// into their native block formats.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: MessageRole,
+    #[serde(default)]
     pub content: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<ContentBlock>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+}
+
+/// Structured content for a `Message`.
+///
+/// Mirrors Anthropic's content-block schema. Providers that use a flat
+/// `tool_calls` field (OpenAI) translate to/from this representation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentBlock {
+    Text {
+        text: String,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        is_error: bool,
+    },
 }
 
 /// Definition of a tool the model may invoke.
@@ -153,4 +184,59 @@ pub struct LlmProviderConfig {
     pub is_default: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod content_block_tests {
+    use super::*;
+
+    #[test]
+    fn message_without_blocks_serializes_back_compat() {
+        let m = Message {
+            role: MessageRole::User,
+            content: "hi".into(),
+            blocks: vec![],
+            tool_call_id: None,
+        };
+        let s = serde_json::to_string(&m).unwrap();
+        // Back-compat: no `blocks` field in wire when empty.
+        assert!(!s.contains("blocks"));
+        let back: Message = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.content, "hi");
+        assert!(back.blocks.is_empty());
+    }
+
+    #[test]
+    fn tool_use_block_round_trips() {
+        let b = ContentBlock::ToolUse {
+            id: "call_1".into(),
+            name: "fs_mkdir".into(),
+            input: serde_json::json!({"path": "/tmp/foo"}),
+        };
+        let s = serde_json::to_string(&b).unwrap();
+        assert!(s.contains(r#""type":"tool_use""#));
+        let back: ContentBlock = serde_json::from_str(&s).unwrap();
+        match back {
+            ContentBlock::ToolUse { id, name, .. } => {
+                assert_eq!(id, "call_1");
+                assert_eq!(name, "fs_mkdir");
+            }
+            _ => panic!("expected ToolUse"),
+        }
+    }
+
+    #[test]
+    fn tool_result_block_round_trips_with_is_error() {
+        let b = ContentBlock::ToolResult {
+            tool_use_id: "call_1".into(),
+            content: "ok".into(),
+            is_error: true,
+        };
+        let s = serde_json::to_string(&b).unwrap();
+        let back: ContentBlock = serde_json::from_str(&s).unwrap();
+        match back {
+            ContentBlock::ToolResult { is_error, .. } => assert!(is_error),
+            _ => panic!("expected ToolResult"),
+        }
+    }
 }

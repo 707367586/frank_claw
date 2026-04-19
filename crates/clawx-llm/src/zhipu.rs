@@ -370,6 +370,7 @@ impl LlmProvider for ZhipuProvider {
             messages: vec![Message {
                 role: MessageRole::User,
                 content: "ping".to_string(),
+                blocks: vec![],
                 tool_call_id: None,
             }],
             tools: None,
@@ -398,11 +399,13 @@ mod tests {
                 Message {
                     role: MessageRole::System,
                     content: "you are helpful".to_string(),
+                    blocks: vec![],
                     tool_call_id: None,
                 },
                 Message {
                     role: MessageRole::User,
                     content: "hello".to_string(),
+                    blocks: vec![],
                     tool_call_id: None,
                 },
             ],
@@ -465,6 +468,7 @@ mod tests {
         req.messages.push(Message {
             role: MessageRole::Tool,
             content: "{\"temp\":22}".to_string(),
+            blocks: vec![],
             tool_call_id: Some("call_1".to_string()),
         });
 

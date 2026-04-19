@@ -123,6 +123,7 @@ impl WorkingMemoryManager for RealWorkingMemoryManager {
             history.push(Message {
                 role: msg.role,
                 content: msg.content.clone(),
+                blocks: vec![],
                 tool_call_id: None,
             });
         }

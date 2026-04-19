@@ -133,6 +133,7 @@ impl MemoryExtractor for LlmMemoryExtractor {
             messages: vec![Message {
                 role: MessageRole::User,
                 content: prompt,
+                blocks: vec![],
                 tool_call_id: None,
             }],
             tools: None,
@@ -233,11 +234,13 @@ mod tests {
             Message {
                 role: MessageRole::User,
                 content: "I prefer dark mode".to_string(),
+                blocks: vec![],
                 tool_call_id: None,
             },
             Message {
                 role: MessageRole::Assistant,
                 content: "Noted!".to_string(),
+                blocks: vec![],
                 tool_call_id: None,
             },
         ];
@@ -258,6 +261,7 @@ mod tests {
         let messages = vec![Message {
             role: MessageRole::User,
             content: "Hello".to_string(),
+            blocks: vec![],
             tool_call_id: None,
         }];
         // StubLlmProvider returns "[stub] response" which won't parse as JSON

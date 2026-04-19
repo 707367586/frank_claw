@@ -79,6 +79,7 @@ pub async fn run_turn(
         messages.push(Message {
             role: MessageRole::System,
             content: system_prompt,
+            blocks: vec![],
             tool_call_id: None,
         });
     }
@@ -90,6 +91,7 @@ pub async fn run_turn(
     messages.push(Message {
         role: MessageRole::User,
         content: user_input.to_string(),
+        blocks: vec![],
         tool_call_id: None,
     });
 
@@ -234,11 +236,13 @@ fn build_extraction_window(
         Message {
             role: MessageRole::User,
             content: user_input.to_string(),
+            blocks: vec![],
             tool_call_id: None,
         },
         Message {
             role: MessageRole::Assistant,
             content: assistant_response.to_string(),
+            blocks: vec![],
             tool_call_id: None,
         },
     ]

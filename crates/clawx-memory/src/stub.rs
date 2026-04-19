@@ -80,6 +80,7 @@ impl WorkingMemoryManager for StubWorkingMemoryManager {
             .map(|m| clawx_types::llm::Message {
                 role: m.role,
                 content: m.content.clone(),
+                blocks: vec![],
                 tool_call_id: None,
             })
             .collect();

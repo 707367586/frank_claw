@@ -234,6 +234,7 @@ impl LlmProvider for AnthropicProvider {
             messages: vec![Message {
                 role: MessageRole::User,
                 content: "ping".to_string(),
+                blocks: vec![],
                 tool_call_id: None,
             }],
             tools: None,

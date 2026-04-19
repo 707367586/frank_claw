@@ -269,6 +269,7 @@ async fn stream_agent_response(
     messages.push(Message {
         role: MessageRole::System,
         content: system_prompt,
+        blocks: vec![],
         tool_call_id: None,
     });
 
@@ -281,6 +282,7 @@ async fn stream_agent_response(
         messages.push(Message {
             role,
             content: msg["content"].as_str().unwrap_or("").to_string(),
+            blocks: vec![],
             tool_call_id: None,
         });
     }
