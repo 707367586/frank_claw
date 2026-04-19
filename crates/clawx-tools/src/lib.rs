@@ -20,7 +20,10 @@ use clawx_types::ids::AgentId;
 use clawx_types::llm::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
-pub use approval::{ApprovalDecision, ApprovalPort, AutoApprovalGate};
+pub use approval::{
+    ApprovalDecision, ApprovalMode, ApprovalPort, ApprovalRule, AutoApprovalGate, PromptGate,
+    RuleApprovalGate,
+};
 
 /// Outcome of a tool invocation. `content` is the string we hand back to
 /// the LLM as a `tool_result` block; `is_error` flips the block's is_error flag.
