@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   listMessages,
   listModels,
@@ -18,6 +18,7 @@ import { TabsRoot, TabsList, TabsTrigger, TabsContent } from "../components/ui/T
 
 export default function ChatPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const convId = searchParams.get("conv");
   const agentId = searchParams.get("agent");
 
@@ -275,7 +276,22 @@ export default function ChatPage() {
         <TabsContent value="conversation">
           <div className="chat-page__body">
             {loading && <p className="chat-page__placeholder">加载中…</p>}
-            {error && <p className="chat-page__placeholder">{error}</p>}
+            {error && (
+              <div className="chat-page__placeholder">
+                <p>{error}</p>
+                {/\bno provider registered\b/i.test(error) && (
+                  <p style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="chat-welcome__tag"
+                      onClick={() => navigate("/settings")}
+                    >
+                      前往设置 → 填入 API Key
+                    </button>
+                  </p>
+                )}
+              </div>
+            )}
             {!loading && !error && (
               <div className="chat-page__stream">
                 {messages.map((m) => (
