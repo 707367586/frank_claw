@@ -269,6 +269,11 @@ impl LlmProvider for AnthropicProvider {
         &self,
         request: CompletionRequest,
     ) -> Result<Pin<Box<dyn futures::Stream<Item = Result<LlmStreamChunk>> + Send>>> {
+        if request.tools.is_some() {
+            return Err(ClawxError::LlmProvider(
+                "streaming with tools is not supported in Phase 1".into(),
+            ));
+        }
         let mut body = self.build_body(&request);
         body.stream = true;
         debug!(model = %request.model, "anthropic stream");
@@ -391,6 +396,10 @@ mod tool_use_tests {
         assert_eq!(json["messages"][0]["role"], "user");
         assert_eq!(json["messages"][0]["content"][0]["type"], "tool_result");
         assert_eq!(json["messages"][0]["content"][0]["tool_use_id"], "call_1");
+        assert!(
+            json["messages"][0]["content"][0].get("is_error").is_none(),
+            "is_error: false MUST be omitted on the wire",
+        );
     }
 
     #[test]
