@@ -1,6 +1,13 @@
 # ClawX Crate 依赖关系图
 
-**版本:** 4.2
+> ⚠️ **DEPRECATED — 2026-04-20**
+>
+> 自 [ADR-037](./decisions.md#adr-037-2026-04-20-全面迁移至-picoclaw-后端删除全部-rust-代码) 起，本仓库已删除全部 Rust crate。本文档描述的依赖图不再存在。
+> 仅作 **历史参考**。当前仓库布局请见 [architecture.md](./architecture.md) §2。
+
+---
+
+**版本:** 4.2（已废弃）
 **日期:** 2026年3月18日
 
 ---

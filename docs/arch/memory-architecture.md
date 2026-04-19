@@ -1,6 +1,13 @@
 # ClawX 记忆系统架构
 
-**版本:** 2.1  
+> ⚠️ **DEPRECATED — 2026-04-20**
+>
+> 自 [ADR-037](./decisions.md#adr-037-2026-04-20-全面迁移至-picoclaw-后端删除全部-rust-代码) 起，本仓库已删除全部 Rust 后端，记忆系统由 [picoclaw](https://github.com/sipeed/picoclaw) 内部承担，对前端不可见。
+> 本文档仅作 **历史参考**。当前架构请见 [architecture.md](./architecture.md)。
+
+---
+
+**版本:** 2.1（已废弃）
 **日期:** 2026年3月18日  
 **对应 PRD:** v2.0 §2.3 记忆中心  
 **对应架构:** v4.1 clawx-memory 模块  

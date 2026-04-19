@@ -1,6 +1,13 @@
 # ClawX 数据模型与存储架构
 
-**版本:** 3.3
+> ⚠️ **DEPRECATED — 2026-04-20**
+>
+> 自 [ADR-037](./decisions.md#adr-037-2026-04-20-全面迁移至-picoclaw-后端删除全部-rust-代码) 起，本仓库已删除全部 Rust 后端及自有 SQLite/Qdrant/Tantivy 存储。所有持久化由 [picoclaw](https://github.com/sipeed/picoclaw) 在 `~/.picoclaw/` 下管理，前端不再持有数据模型。
+> 本文档仅作 **历史参考**。当前架构请见 [architecture.md](./architecture.md)。
+
+---
+
+**版本:** 3.3（已废弃）
 **日期:** 2026年3月18日
 **对应架构:** v4.2
 

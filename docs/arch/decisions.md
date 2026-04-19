@@ -317,7 +317,56 @@
 
 ---
 
+## ADR-037: 2026-04-20 全面迁移至 picoclaw 后端，删除全部 Rust 代码
+
+**状态:** Accepted — 同时 SUPERSEDES：ADR-001 / 002 / 003 / 004 / 005 / 008 / 009 / 010 / 011 / 014 / 015 / 016 / 017 / 018 / 019 / 020 / 023 / 024 / 025 / 027 / 028 / 029 / 030 / 031 / 032 / 033 / 034 / 035 / 036。仅 ADR-006 / 007 / 012 / 013 / 021 / 022 / 026 作为历史记录保留。
+
+**背景:**
+
+ClawX 自研 Rust 后端在 v0.3 节点完成了"agentic tool-use loop Phase 1"（ADR-036）。但同期上游开源项目 [sipeed/picoclaw](https://github.com/sipeed/picoclaw) 已经把"个人 AI Agent 守护进程"做成了：单文件 Go 二进制、内置 30+ LLM provider、原生 MCP / Skills / Hooks / SubTurn / Channels 抽象、跨平台（含 RISC-V SBC）、MIT 协议、社区活跃（28k stars，~2.5 个月）。继续维护 17 个 Rust crate 的边际成本远高于复用 picoclaw 的迁移成本。
+
+**决策:**
+
+1. **删除整个 Rust workspace**：所有 `crates/*`、`apps/clawx-service`、`apps/clawx-cli`、`Cargo.{toml,lock}`、`rust-toolchain.toml`、`clippy.toml`、`rustfmt.toml`、`target/` 一并清除。
+2. **后端 = picoclaw**：以官方二进制或 docker-compose 形式作为外部进程运行，不 fork、不维护补丁。
+3. **前端从 Tauri 桌面 app 退化为纯 Web 前端**：保留 `apps/clawx-gui/src/` 中"对话"相关的 React 组件与样式；删除 `src-tauri/`、`@tauri-apps/cli` 依赖、`tauri` 脚本。前端由 Vite 构建为静态资产，可由 picoclaw 自带 launcher 托管，也可独立部署。
+4. **协议层换血**：弃用自研的 40+ REST 端点 + SSE。前端直接对接 picoclaw 的"Pico Channel" WebSocket（`/pico/ws`）+ REST（`/api/sessions`、`/api/skills`、`/api/tools`、`/api/pico/token`）。
+5. **删除以下产品能力**（picoclaw 不暴露给客户端、或与新协议不兼容）：
+   - Agent 管理（picoclaw 把"角色/人格"当作 Skill / 配置，不是 first-class entity）
+   - 任务调度（picoclaw 内部有 cron，但不向客户端暴露管理面）
+   - Vault 快照 / 工作区版本化
+   - 知识库（KB / Qdrant / Tantivy）
+   - 持久化记忆（Long-Term / Short-Term / Working）
+   - Tool 审批 UI（Pico WS 协议无 `tool_use` / `approval` 消息类型）
+   - 模型路由 / Provider 管理 UI（picoclaw 通过 `~/.picoclaw/config.json` + `.security.yml` 配置）
+   - macOS sandbox-exec / Keychain / FSEvents（picoclaw 用 Go 实现自己的安全模型）
+
+**关键权衡:**
+
+- **协议失配**：picoclaw 不流式返回 token 增量，只在每条消息完成时下发一条 `message.create`；中间过程通过 `payload.thought:true` 表达。前端需要从"delta accumulator"重写为"message-id merge store"。
+- **审批 UI 必须砍掉**：Pico WebSocket 协议未定义任何 tool-use 或 approval 消息类型，强行实现需要分叉 picoclaw，违背"不维护补丁"的原则。
+- **picoclaw 自述"v1.0 之前不要上生产"**：本次迁移目标不是生产部署，而是把项目重新定位为"picoclaw 的一个外部前端"，演进节奏跟随上游。
+- **跨平台得失**：失去 macOS Tauri 原生壳与 Keychain，但获得跨平台浏览器访问能力。
+- **数据迁移**：本地 SQLite 中的对话/记忆**不迁移**（PRD v0.x 早期阶段，没有真实用户数据）。如有遗留 `~/.clawx/db/clawx.db`，由用户自行归档。
+
+**影响面:**
+
+- `docs/arch/architecture.md` 重写为 v5.0；
+- `docs/arch/api-design.md` 重写为 v5.0；
+- `docs/arch/{autonomy,memory,security,data-model,crate-dependency-graph}.md` 标记为 **DEPRECATED**，仅作历史参考；
+- `docs/prd/*` 与新形态严重不一致，本 ADR 不直接处理 PRD，留给后续单独的 PRD 重写工作；
+- `apps/clawx-gui` 内的 `pages/{Agents,Tasks,Knowledge,Contacts}.tsx`、`components/{Agent*,Task*,Knowledge*,Source*,Artifacts*,AddProvider*,ModelProvider*}.tsx`、`lib/agent-conv-memory.ts` 全部删除；
+- `lib/api.ts`、`lib/types.ts`、`lib/chat-stream-store.ts`、`lib/store.tsx` 全部重写。
+
+**版本号:** 完成迁移后版本跳到 **v0.4**；`v0.3` tag 已存档为 Rust 时代的最后稳定版（同时存在 `release_v0.3` 备份分支）。
+
+---
+
 ## ADR-036: 2026-04-19 Agentic tool-use loop (Phase 1)
+
+> **状态:** SUPERSEDED by ADR-037。Rust 实现已删除，tool-use 由 picoclaw 内部承担，前端不再可见。本 ADR 作为历史记录保留。
+
+
 
 **背景:** `agent_loop::run_turn` 以前从不向 LLM 传递 `tools`，Agent 只能输出文本，无法让它在本地创建文件夹、列目录、执行命令。目标是对标 picoclaw：把 tool loop、内置工具、审批门、macOS 沙箱组合起来落地。
 

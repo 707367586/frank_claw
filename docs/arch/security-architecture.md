@@ -1,6 +1,13 @@
 # ClawX 安全架构 v4.1
 
-**日期:** 2026-03-18
+> ⚠️ **DEPRECATED — 2026-04-20**
+>
+> 自 [ADR-037](./decisions.md#adr-037-2026-04-20-全面迁移至-picoclaw-后端删除全部-rust-代码) 起，本仓库已删除全部 Rust 后端。L1–L12 纵深防御与 T1/T2/T3 执行模型由 [picoclaw](https://github.com/sipeed/picoclaw) 服务端承担，前端只剩浏览器侧约束（loopback only / Pico token 内存暂存 / 无本地命令执行）。
+> 本文档仅作 **历史参考**。当前架构请见 [architecture.md](./architecture.md) §7。
+
+---
+
+**日期:** 2026-03-18（已废弃）
 
 ---
 
