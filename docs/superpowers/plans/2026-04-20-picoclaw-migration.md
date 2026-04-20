@@ -1,16 +1,20 @@
-# PicoClaw Migration Implementation Plan
+# PicoClaw Migration Implementation Plan v2
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Delete the entire Rust workspace + Tauri shell, repoint the React frontend at upstream [picoclaw](https://github.com/sipeed/picoclaw) via its Pico WebSocket + REST APIs, and ship a slim "ClawX Web" that is purely a frontend for picoclaw.
+**Goal:** Delete the entire Rust workspace + Tauri shell, **vendor [picoclaw](https://github.com/sipeed/picoclaw) source code into `backend/`** at a pinned SHA so we can freely modify it, then rewire the React frontend to talk to the Go-built `picoclaw-launcher` over its Pico WebSocket + REST API. No docker.
 
-**Architecture:** Per [ADR-037](../../arch/decisions.md#adr-037-2026-04-20-全面迁移至-picoclaw-后端删除全部-rust-代码) and [architecture.md v5.0](../../arch/architecture.md): browser → picoclaw gateway (`:18790`) over `wss://…/pico/ws?session_id=` (subprotocol auth) for chat, and `https://…/api/{pico/token,sessions,skills,tools}` for management. No own backend, no Tauri, no SSE.
+**Architecture:** Per [ADR-037 v2](../../arch/decisions.md#adr-037-2026-04-20-删除-rust-后端将-picoclaw-源码-vendor-进本仓库作为新后端) and [architecture.md v5.0](../../arch/architecture.md): single repo, two subprojects — `apps/clawx-gui/` (frontend) + `backend/` (vendored Go picoclaw, owned/forked).
 
-**Tech Stack:** React 19 + TypeScript 5 + Vite 6 + react-router-dom 7 + vitest 4 (unchanged). picoclaw (Go ≥ 1.25) as external runtime via docker-compose.
+**Tech Stack (new):** React 19 + TypeScript 5 + Vite 6 (unchanged) + **Go ≥ 1.25** (newly required for backend).
 
-**Out of scope (deleted, not migrated):** agents/memories/knowledge/vault/tasks/channels/skills-as-domain UIs, tool-approval UI, model-router UI, Tauri shell, Cargo workspace.
+**Out of scope:** agents/memories/knowledge/vault/tasks/channels/skills-as-domain UIs, tool-approval UI, model-router UI, Tauri shell, Cargo workspace, docker.
 
-**Spec source:** This plan is the spec. Architecture context: `docs/arch/architecture.md` and `docs/arch/api-design.md` (both v5.0, written 2026-04-20 in the same session).
+**v1 → v2 changes (why this rewrite):** v1 assumed we could `docker pull` a stable picoclaw image. Empirical test of the latest tagged release `:v0.2.6` proved that the `/api/*` endpoints, the launcher subcommand, and the Pico WS path all live in main-branch source but are absent from the released binary. v2 vendors source at a specific SHA and runs `picoclaw-launcher` directly with `go run`. Also: user authorized us to fork/modify picoclaw freely.
+
+**Spec source:** This plan + `docs/arch/architecture.md` v5.0 + `docs/arch/api-design.md` v5.0.
+
+**Working directory for all tasks:** `/Users/zhoulingfeng/Desktop/code/makemoney/frank_claw/.worktrees/picoclaw-migration` (worktree on branch `feat/picoclaw-migration`).
 
 ---
 
@@ -18,131 +22,421 @@
 
 | Phase | Theme | Reversible? | Blast radius |
 |---|---|---|---|
-| 1 | Stand up picoclaw locally + dev workflow | Yes | Local only |
-| 2 | Delete all Rust + Tauri files | **No** (use git) | Whole repo |
-| 3 | Build new TS protocol layer (TDD) | Yes | gui only |
-| 4 | Rewire ChatPage to new protocol | Yes | gui only |
-| 5 | Rebuild Connectors + Settings as REST shells | Yes | gui only |
-| 6 | Delete obsolete pages, components, lib files | Yes (git) | gui only |
-| 7 | README / AGENTS.md / CI / final verification | Yes | repo metadata |
+| 1 | Vendor picoclaw source into `backend/`; verify build + run | Yes (delete dir) | new dir only |
+| 2 | (Conditional) Fill protocol gaps in Go | Yes | backend/ only |
+| 3 | Delete entire Rust workspace | No (use git revert) | repo-wide |
+| 4 | Delete Tauri shell from `apps/clawx-gui/` | Yes (git) | gui only |
+| 5 | TS protocol layer (TDD): pico-types, pico-rest, pico-socket, chat-store, store.tsx | Yes | gui only |
+| 6 | Rewire ChatPage to new protocol | Yes | gui only |
+| 7 | SettingsPage + ConnectorsPage as REST shells | Yes | gui only |
+| 8 | Delete obsolete pages/components/routes | Yes (git) | gui only |
+| 9 | Root dev workflow (no docker): concurrently scripts, Vite proxy, Makefile, README, AGENTS.md | Yes | repo metadata |
+| 10 | Final verification + tag `v0.4.0` | n/a | none |
 
-> Phase 2 is destructive. Commit after Phase 1 so you have a clean restore point. Do all Phase 2 deletions in **one** commit so a single `git revert` restores everything.
+> Phase 3 is the destructive one; commit Phase 1+2 first.
 
 ---
 
-## Phase 1 — Stand up picoclaw + dev workflow
+## Phase 1 — Vendor picoclaw into `backend/`
 
-### Task 1.1: Add `docker-compose.yml` pinning picoclaw
+### Task 1.1: Clone + copy picoclaw source at pinned SHA
 
-**Files:**
-- Create: `docker-compose.yml`
+**Pinned SHA:** `8461c996e5ad2f20801622a8eeec931f8966a066` (sipeed/picoclaw `main` HEAD as of 2026-04-20T03:18:42Z, PR #2592).
 
-- [ ] **Step 1: Look up the latest picoclaw release tag**
+**Files (create):**
+- `backend/` (entire directory tree from upstream, see exclusions)
+- `backend/UPSTREAM.md`
+- `backend/PATCHES.md`
 
-Open https://github.com/sipeed/picoclaw/releases in a browser, copy the latest stable tag (expected format `v0.2.x`). For this plan use `v0.2.4` as the placeholder; replace below if newer.
+- [ ] **Step 1: Clone upstream into a scratch dir**
 
-- [ ] **Step 2: Write docker-compose.yml**
-
-```yaml
-services:
-  picoclaw:
-    image: ghcr.io/sipeed/picoclaw:v0.2.4
-    container_name: clawx-picoclaw
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:18790:18790"   # gateway (frontend talks here)
-      - "127.0.0.1:18800:18800"   # launcher webui (config / token mgmt)
-    environment:
-      PICOCLAW_GATEWAY_HOST: "0.0.0.0"
-      PICOCLAW_GATEWAY_PORT: "18790"
-    volumes:
-      - ./.picoclaw:/root/.picoclaw
+```bash
+TMP=$(mktemp -d)
+git clone --depth 50 https://github.com/sipeed/picoclaw.git "$TMP/picoclaw"
+cd "$TMP/picoclaw"
+git checkout 8461c996e5ad2f20801622a8eeec931f8966a066
 ```
 
-- [ ] **Step 3: Start it and verify**
+If checkout fails because depth-50 didn't reach the SHA, redo with `--depth 200` or `git fetch origin 8461c996...`.
 
-Run: `docker compose up -d picoclaw && sleep 3 && curl -sS http://127.0.0.1:18800/`
-Expected: HTTP 200 returning the launcher HTML (contains `<title>` mentioning picoclaw).
+- [ ] **Step 2: Copy upstream into `backend/`**
 
-- [ ] **Step 4: Manually create Pico token via launcher**
+```bash
+cd /Users/zhoulingfeng/Desktop/code/makemoney/frank_claw/.worktrees/picoclaw-migration
+mkdir backend
+# Copy everything except git metadata, CI configs that conflict, and obvious pruning candidates
+rsync -a --exclude='.git' \
+        --exclude='.github' \
+        --exclude='.gitignore' \
+        --exclude='docker' \
+        --exclude='.goreleaser*' \
+        --exclude='dist' \
+        --exclude='build' \
+        "$TMP/picoclaw/" backend/
+```
 
-Open `http://127.0.0.1:18800/` in browser, follow the launcher to enable the Pico channel and generate a token. Note: do **not** commit `.picoclaw/` — add to `.gitignore` next.
+> **Why exclude `docker/` and `.goreleaser*`**: ADR-037 v2 explicitly removed docker. We don't ship containers from this repo; the upstream Dockerfiles are dead weight here.
+>
+> **Why keep `web/frontend/`**: the Go code uses `embed.FS` to bundle it into `picoclaw-launcher`. Removing it now would break compilation. We keep it as compile-time dead weight; Phase 9 task 9.6 will revisit pruning it.
 
-- [ ] **Step 5: Verify token endpoint**
+- [ ] **Step 3: Write `backend/UPSTREAM.md`**
 
-Run: `curl -sS http://127.0.0.1:18790/api/pico/token`
-Expected: JSON `{ "token": "<…>", "ws_url": "ws://…/pico/ws", "enabled": true }`. If `enabled: false`, redo Step 4.
+```markdown
+# picoclaw upstream provenance
 
-- [ ] **Step 6: Update `.gitignore`**
+This `backend/` tree is a flat copy of [sipeed/picoclaw](https://github.com/sipeed/picoclaw) source at:
+
+| Field | Value |
+|---|---|
+| Source | https://github.com/sipeed/picoclaw |
+| Branch | main |
+| Commit SHA | `8461c996e5ad2f20801622a8eeec931f8966a066` |
+| Commit date | 2026-04-20T03:18:42Z |
+| Commit subject | chore(web): update linting and router dependencies (#2592) |
+| License | MIT (see `backend/LICENSE`) |
+| Imported on | 2026-04-20 |
+| Importer | ClawX migration v0.4.0 (ADR-037 v2) |
+
+## Excluded from import
+
+- `.git`, `.github` — separate version control / CI flows
+- `.gitignore` — replaced by repo root `.gitignore`
+- `docker/` — ADR-037 v2 doesn't deploy via docker
+- `.goreleaser*` — release pipeline is owned by this repo, not upstream
+
+## Manual upstream sync (when needed)
+
+1. Fetch new SHA: `git -C /tmp/picoclaw fetch && git -C /tmp/picoclaw checkout <new-sha>`
+2. Three-way diff: `diff -ru /tmp/picoclaw/ backend/ > /tmp/upstream.diff`
+3. Apply selectively, **always preserving the local changes recorded in `PATCHES.md`**.
+4. Run full test suite (`go test ./backend/...` + `pnpm --filter clawx-gui vitest run`).
+5. If green, update `Commit SHA` and `Commit date` above.
+
+We do **not** use `git subtree` / `submodule`. Maintaining a clean linear history matters more than automatic upstream pulls.
+```
+
+- [ ] **Step 4: Write `backend/PATCHES.md`**
+
+```markdown
+# Local patches to vendored picoclaw
+
+Each entry: short subject + commit SHA + rationale + (optional) upstream-PR link.
+
+When upstream syncs happen, every entry here must be re-applied or explicitly retired.
+
+## (none yet)
+```
+
+- [ ] **Step 5: Update repo `.gitignore`**
 
 Append to `/Users/zhoulingfeng/Desktop/code/makemoney/frank_claw/.gitignore`:
 
 ```
-# picoclaw runtime data (per-developer)
-.picoclaw/
+# Go build artifacts
+/backend/build/
+/backend/dist/
+*.test
+*.out
 ```
 
+- [ ] **Step 6: Sanity-check the layout**
+
+```bash
+ls backend/cmd/        # Expected: picoclaw, picoclaw-launcher (and maybe picoclaw-launcher-tui)
+ls backend/pkg/        # Expected: many subdirs incl. channels/, gateway/, config/
+test -f backend/go.mod && echo "go.mod OK"
+test -f backend/LICENSE && echo "LICENSE OK"
+```
+
+If any directory is missing (especially `cmd/picoclaw-launcher`), STOP — the SHA may be wrong or the rsync excludes too aggressive. Re-do.
+
+- [ ] **Step 7: Commit (one big commit; intentional)**
+
+```bash
+cd /Users/zhoulingfeng/Desktop/code/makemoney/frank_claw/.worktrees/picoclaw-migration
+git add backend .gitignore
+git commit -m "feat(backend): vendor picoclaw source @ 8461c996"
+```
+
+The commit will be very large (probably 50–200 MB of tracked files). Don't squeeze it into multiple commits — one atomic vendor commit makes future syncs sane.
+
+---
+
+### Task 1.2: Verify `backend/` builds with `go build`
+
+**Files:** none modified (build artifacts only)
+
+- [ ] **Step 1: `go mod download`**
+
+```bash
+cd backend
+go mod download
+```
+
+Expected: prints nothing on success. If it fails (e.g. private modules), STOP and report — likely missing GOPROXY env or the upstream depends on internal modules.
+
+- [ ] **Step 2: Build the launcher binary**
+
+```bash
+mkdir -p build
+go build -o build/picoclaw-launcher ./cmd/picoclaw-launcher
+```
+
+Expected: produces `backend/build/picoclaw-launcher`, exits 0. If build fails, capture the FIRST compile error verbatim and STOP — likely a Go version mismatch or a vendored dep with build-tag issues.
+
+- [ ] **Step 3: Verify the binary runs `--help`**
+
+```bash
+./build/picoclaw-launcher --help 2>&1 | head -30
+```
+
+Expected: prints flags including `-console`, `-public`, `-no-browser`, `-webroot` (per upstream docker-compose example).
+
+If `picoclaw-launcher` doesn't exist as a `cmd/`, fall back to:
+```bash
+ls cmd/
+# Find the launcher entry point name; could be cmd/launcher/, cmd/console/, etc.
+```
+and adjust the build path. Update `backend/UPSTREAM.md` if the binary name differs from `picoclaw-launcher`.
+
+- [ ] **Step 4: Commit (only if Makefile / new files were added; otherwise skip)**
+
+If you needed to write a `backend/Makefile` to abstract the build commands, commit it. Otherwise no commit (build artifacts are gitignored).
+
+---
+
+### Task 1.3: First-run launcher locally + minimal config
+
+**Files (config — outside repo):** `~/.picoclaw/config.json` and `~/.picoclaw/.security.yml` will be auto-generated.
+
+> **Note:** This task touches the user's home directory. The state at `~/.picoclaw/` is per-developer and not committed.
+
+- [ ] **Step 1: First-run onboarding**
+
+```bash
+cd backend
+./build/picoclaw-launcher onboard 2>&1 | tail -10
+```
+
+Expected: prints "First-run setup complete" message and exits 0. Files created: `~/.picoclaw/config.json`, `~/.picoclaw/.security.yml`, `~/.picoclaw/workspace/`.
+
+If `picoclaw-launcher` doesn't have `onboard` (it's a subcommand of the gateway-only `picoclaw` binary), invoke that instead:
+
+```bash
+go run ./cmd/picoclaw onboard
+```
+
+- [ ] **Step 2: Patch config to enable Pico channel + bind to 0.0.0.0**
+
+Edit `~/.picoclaw/config.json`:
+- Set `gateway.host = "0.0.0.0"` (only if you'll reach it from a non-loopback ip; for pure localhost dev the default `127.0.0.1` is fine since Vite dev server is also on localhost)
+- Set `channels.pico.enabled = true`
+- Leave `agents.defaults.provider` and `model_name` empty (we'll start with `--allow-empty`)
+
+Snippet to do it scriptably:
+
+```bash
+python3 - <<'PY'
+import json
+p = "/Users/zhoulingfeng/.picoclaw/config.json"
+c = json.load(open(p))
+c["channels"]["pico"]["enabled"] = True
+json.dump(c, open(p, "w"), indent=2)
+print("ok")
+PY
+```
+
+- [ ] **Step 3: Start the launcher in foreground (one terminal tab)**
+
+```bash
+./build/picoclaw-launcher --allow-empty 2>&1 | tee /tmp/picoclaw.log
+```
+
+Expected: log shows `Gateway started on 127.0.0.1:18790`. Leave it running; Step 4 probes from another shell.
+
+- [ ] **Step 4: From a second shell, verify `/health` works**
+
+```bash
+curl -sS http://127.0.0.1:18790/health
+```
+
+Expected: `{"status":"ok","uptime":"...","pid":...}`.
+
+If it returns "Empty reply from server", the gateway bound to localhost INSIDE the binary's loopback (rare for native binary, but possible). Re-check `gateway.host` in config.
+
+- [ ] **Step 5: Stop the launcher (Ctrl+C in the launcher terminal)**
+
+We've proven build + run + health works. Onward.
+
+- [ ] **Step 6: Commit nothing**
+
+This task touches per-developer state only. If you wrote a helper script (e.g. `scripts/setup-dev-config.sh`) to automate Steps 1–2, commit *that* — but do NOT commit anything from `~/.picoclaw/`.
+
+---
+
+### Task 1.4: Probe the actual `/api/*` + `/pico/ws` surface
+
+**Goal:** Discover empirically which endpoints `picoclaw-launcher` (built from our vendor SHA) actually serves. Output is a Phase-2 audit.
+
+**Files (create):**
+- `docs/superpowers/plans/2026-04-20-picoclaw-surface-audit.md`
+
+- [ ] **Step 1: Start launcher again**
+
+```bash
+cd backend
+./build/picoclaw-launcher --allow-empty 2>&1 > /tmp/picoclaw.log &
+LAUNCHER_PID=$!
+sleep 3
+```
+
+- [ ] **Step 2: Probe every endpoint the frontend will rely on**
+
+```bash
+for path in /health /ready /api/pico/token /api/sessions /api/skills /api/tools /pico/ws; do
+  code=$(curl -sS -o /dev/null -w "%{http_code}" "http://127.0.0.1:18790$path")
+  echo "$code  GET $path"
+done
+# WS upgrade probe
+code=$(curl -sS -o /dev/null -w "%{http_code}" \
+  -H "Upgrade: websocket" -H "Connection: Upgrade" \
+  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  "http://127.0.0.1:18790/pico/ws?session_id=probe")
+echo "$code  WS  /pico/ws"
+```
+
+- [ ] **Step 3: Probe with token if any 401s appear**
+
+```bash
+TOKEN=$(curl -sS http://127.0.0.1:18790/api/pico/token | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])' 2>/dev/null)
+echo "TOKEN=$TOKEN"
+# Re-probe authed endpoints with Authorization header
+for path in /api/sessions /api/skills /api/tools; do
+  code=$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:18790$path")
+  echo "$code  GET $path  (with token)"
+done
+```
+
+- [ ] **Step 4: Stop launcher, write the audit**
+
+```bash
+kill $LAUNCHER_PID
+```
+
+Create `docs/superpowers/plans/2026-04-20-picoclaw-surface-audit.md` with:
+
+```markdown
+# picoclaw vendor SHA `8461c996…` — endpoint surface audit
+
+Probed on 2026-04-20 from `backend/build/picoclaw-launcher --allow-empty` (vendor SHA from `backend/UPSTREAM.md`).
+
+| Endpoint | Expected by frontend | Actual response | Action |
+|---|---|---|---|
+| `GET /health` | 200 JSON | <fill in> | (none if 200) |
+| `GET /api/pico/token` | 200 JSON | <fill in> | <gap-fill / OK> |
+| `GET /api/sessions` | 200 JSON | <fill in> | <gap-fill / OK> |
+| `GET /api/sessions/:id` | 200 JSON | (probe with a real id from list) | … |
+| `DELETE /api/sessions/:id` | 204 | … | … |
+| `GET /api/skills` | 200 JSON | … | … |
+| `POST /api/skills/install` | 200 / 202 | … | … |
+| `DELETE /api/skills/:name` | 204 | … | … |
+| `GET /api/tools` | 200 JSON | … | … |
+| `PUT /api/tools/:name/state` | 204 | … | … |
+| `WS /pico/ws` | 101 Switching Protocols | … | … |
+
+## Gaps to fill in Phase 2
+
+- `<endpoint>` — current behavior `<…>`, needed behavior `<…>`. Add Go handler in `backend/pkg/<…>/<…>.go`.
+
+## Notes
+
+(…anything surprising you noticed in launcher logs, e.g. routes only register when `channels.pico.enabled=true`…)
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/superpowers/plans/2026-04-20-picoclaw-surface-audit.md
+git commit -m "docs: empirical audit of picoclaw vendor surface"
+```
+
+---
+
+## Phase 2 — Fill protocol gaps in Go (CONDITIONAL on Phase 1.4 audit)
+
+This phase is **conditional**. If Phase 1.4 audit shows zero gaps, skip Phase 2 entirely. If gaps exist, create one task per gap, each:
+
+- Following Go's table-driven test pattern
+- Adding the handler in the right `backend/pkg/api/...` file (or wherever the launcher's HTTP routes live — discover from `backend/cmd/picoclaw-launcher/main.go`)
+- Updating `backend/PATCHES.md` with a one-line entry
+- Committing with message `feat(backend): add <endpoint> to launcher (gap from upstream)`
+
+**Template task** (one per gap):
+
+### Task 2.x: Add `<METHOD> <PATH>` to launcher
+
+**Files:**
+- Modify: `backend/pkg/api/<file>.go` (or new file)
+- Test: `backend/pkg/api/<file>_test.go`
+- Modify: `backend/PATCHES.md`
+
+- [ ] **Step 1: Locate the existing route registration**
+
+```bash
+grep -RIn "HandleFunc\|router\.\|mux\." backend/cmd/picoclaw-launcher backend/pkg/api 2>/dev/null | head -20
+```
+
+Identify the file where existing `/api/*` routes are wired.
+
+- [ ] **Step 2: Write failing test**
+
+Use Go's `httptest.NewServer` + `net/http/httptest`. Table-driven:
+
+```go
+func TestNewEndpoint(t *testing.T) {
+    tests := []struct {
+        name     string
+        body     string
+        wantCode int
+        wantBody string
+    }{
+        {"happy path", `{...}`, 200, `{...}`},
+        {"bad input", `{}`, 400, `{...}`},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) { ... })
+    }
+}
+```
+
+- [ ] **Step 3: Run, watch fail.**
+
+```bash
+cd backend && go test ./pkg/api/... -run TestNewEndpoint -v
+```
+
+- [ ] **Step 4: Implement minimal handler.**
+- [ ] **Step 5: Run, watch pass.**
+- [ ] **Step 6: Update `backend/PATCHES.md`**
 - [ ] **Step 7: Commit**
 
 ```bash
-git add docker-compose.yml .gitignore
-git commit -m "feat: docker-compose for local picoclaw runtime"
+git add backend/pkg/api backend/PATCHES.md
+git commit -m "feat(backend): add <METHOD> <PATH> to launcher (gap from upstream)"
 ```
+
+> **Cap on this phase:** if Phase 1.4 reveals more than 5 gaps, STOP and escalate — at that point the upstream surface diverges enough from the plan that we should re-evaluate (e.g. maybe a different upstream commit has more of these routes already).
 
 ---
 
-### Task 1.2: Add Vite proxy so dev server can reach picoclaw
+## Phase 3 — Delete Rust workspace (atomic commit)
 
-**Files:**
-- Modify: `apps/clawx-gui/vite.config.ts`
+> **STOP AND CONFIRM** with user before this phase. Once committed, restoration is `git revert <hash>`.
 
-- [ ] **Step 1: Read current vite.config.ts**
-
-Open the file. We are about to add a `server.proxy` block.
-
-- [ ] **Step 2: Add proxy entries**
-
-Inside `defineConfig({...})` add:
-
-```ts
-server: {
-  proxy: {
-    "/api": {
-      target: "http://127.0.0.1:18790",
-      changeOrigin: false,
-    },
-    "/pico/ws": {
-      target: "ws://127.0.0.1:18790",
-      ws: true,
-      changeOrigin: false,
-    },
-  },
-},
-```
-
-- [ ] **Step 3: Verify dev server can fetch token through proxy**
-
-Run: `cd apps/clawx-gui && pnpm dev` (background). Then:
-`curl -sS http://localhost:5173/api/pico/token`
-Expected: same JSON as Task 1.1 Step 5.
-
-- [ ] **Step 4: Stop dev server, commit**
-
-```bash
-git add apps/clawx-gui/vite.config.ts
-git commit -m "feat(gui): vite proxy /api + /pico/ws to picoclaw gateway"
-```
-
----
-
-## Phase 2 — Delete Rust + Tauri (one atomic commit)
-
-> **STOP AND CONFIRM** with user before this phase. Once committed, restoration requires `git revert <hash>` which is fine, but make sure Phase 1 left a working dev loop first.
-
-### Task 2.1: Delete Rust workspace
+### Task 3.1: Delete Rust workspace
 
 **Files (delete):**
-- `crates/` (entire directory, all 17 sub-crates)
+- `crates/` (entire, all 17 sub-crates)
 - `apps/clawx-service/`
 - `apps/clawx-cli/`
 - `Cargo.toml`
@@ -150,94 +444,103 @@ git commit -m "feat(gui): vite proxy /api + /pico/ws to picoclaw gateway"
 - `clippy.toml`
 - `rust-toolchain.toml`
 - `rustfmt.toml`
-- `target/` (regenerated artifacts; don't `git rm` if already gitignored — verify)
 
 - [ ] **Step 1: Verify `target/` is gitignored**
 
-Run: `git check-ignore target` — expected output: `target`. If not ignored, add to `.gitignore` first.
+`git check-ignore target` — expected: `target`. If not, fix `.gitignore` first.
 
-- [ ] **Step 2: Stage all deletions**
+- [ ] **Step 2: git rm**
 
 ```bash
 git rm -r crates apps/clawx-service apps/clawx-cli
 git rm Cargo.toml Cargo.lock clippy.toml rust-toolchain.toml rustfmt.toml
 ```
 
-- [ ] **Step 3: Verify nothing else still references the Rust workspace**
+- [ ] **Step 3: Verify nothing in repo (outside docs/arch + docs/superpowers + backend/) references the deleted Rust modules**
 
-Run: `grep -RIl "clawx-service\|clawx-runtime\|clawx-controlplane-client\|clawx-cli" -- ':!docs/arch' ':!docs/superpowers' ':!.git'`
-Expected: empty output (only the architecture/plan docs may legitimately mention them).
+```bash
+grep -RIl "clawx-service\|clawx-runtime\|clawx-controlplane-client\|clawx-cli" \
+    --exclude-dir=docs \
+    --exclude-dir=backend \
+    --exclude-dir=node_modules .
+```
+
+Expected: no matches.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git commit -m "refactor!: delete Rust workspace (superseded by picoclaw, ADR-037)"
+git commit -m "refactor!: delete Rust workspace (superseded by vendored picoclaw, ADR-037 v2)"
 ```
 
 ---
 
-### Task 2.2: Delete Tauri shell from clawx-gui
+## Phase 4 — Delete Tauri shell from clawx-gui
 
-**Files (delete):**
-- `apps/clawx-gui/src-tauri/` (entire directory)
+### Task 4.1: Remove src-tauri + Tauri devDeps
 
-**Files (modify):**
-- `apps/clawx-gui/package.json` — remove `@tauri-apps/cli` devDep + `tauri` script
-- `apps/clawx-gui/pnpm-lock.yaml` — regenerate
-- `apps/clawx-gui/package-lock.json` — delete (project standardizes on pnpm; lock file mixing is a footgun — verify `pnpm-lock.yaml` is the canonical one before deleting `package-lock.json`. If unsure, ask the user.)
+**Files:**
+- Delete: `apps/clawx-gui/src-tauri/`
+- Modify: `apps/clawx-gui/package.json` — drop `@tauri-apps/cli` + `tauri` script; bump `version` to `0.4.0`
+- Delete: `apps/clawx-gui/package-lock.json` (controller pre-resolved: pnpm is canonical)
+- Modify: `apps/clawx-gui/pnpm-lock.yaml` (regenerated by `pnpm install`)
 
-- [ ] **Step 1: Confirm pnpm vs npm canonical lockfile with user**
-
-Stop and ask: "I see both `pnpm-lock.yaml` and `package-lock.json` in `apps/clawx-gui/`. Which is canonical? I'll delete the other."
-
-- [ ] **Step 2: Delete src-tauri**
+- [ ] **Step 1: git rm src-tauri**
 
 ```bash
 git rm -r apps/clawx-gui/src-tauri
 ```
 
-- [ ] **Step 3: Update package.json**
+- [ ] **Step 2: Update package.json**
 
-Open `apps/clawx-gui/package.json`. Remove the line `"tauri": "tauri",` from `scripts`. Remove `"@tauri-apps/cli": "^2",` from `devDependencies`. Bump `"version": "0.2.0"` → `"version": "0.4.0"`. (v0.3 was the Rust era; v0.4 marks the picoclaw migration.)
+In `apps/clawx-gui/package.json`:
+- Remove `"tauri": "tauri",` from `scripts`
+- Remove `"@tauri-apps/cli": "^2",` from `devDependencies`
+- Change `"version": "0.2.0"` → `"version": "0.4.0"`
 
-- [ ] **Step 4: Reinstall to refresh lockfile**
+- [ ] **Step 3: Drop the npm lockfile (controller pre-resolved: pnpm is canonical)**
+
+```bash
+git rm apps/clawx-gui/package-lock.json
+```
+
+- [ ] **Step 4: Refresh pnpm lockfile**
 
 ```bash
 cd apps/clawx-gui && pnpm install
 ```
 
-Expected: lockfile updated, `node_modules` no longer contains `@tauri-apps/cli`. Verify with: `ls node_modules/@tauri-apps 2>/dev/null` — expected: not found.
+Verify: `ls node_modules/@tauri-apps 2>/dev/null` returns nothing.
 
-- [ ] **Step 5: Verify build still passes**
+- [ ] **Step 5: Verify config-level toolchain still works (TS errors in source files are expected and fine here)**
 
 ```bash
-cd apps/clawx-gui && pnpm build
+pnpm vitest run 2>&1 | tail -10
 ```
 
-Expected: TypeScript compile may fail because `lib/api.ts` still imports `Agent`, `Memory`, etc. — that's fine, we'll fix in Phase 3. **What we're checking:** Vite/Tauri removal didn't break the toolchain itself. If the failure is *only* in `src/lib/` and `src/pages/` source files (not in build config), proceed. If there's a config-level error, debug before continuing.
+Expected: tests still pass. If TypeScript errors appear in `src/lib/api.ts` etc., that's fine — Phase 6 fixes them. If Vite/Vitest themselves can't load (config-level), STOP.
 
 - [ ] **Step 6: Commit**
 
 ```bash
+cd /Users/zhoulingfeng/Desktop/code/makemoney/frank_claw/.worktrees/picoclaw-migration
 git add apps/clawx-gui/package.json apps/clawx-gui/pnpm-lock.yaml
-git commit -m "refactor!: remove Tauri shell from clawx-gui; bump to v0.4.0"
+git commit -m "refactor!: remove Tauri shell from clawx-gui; bump to v0.4.0; drop npm lockfile"
 ```
 
 ---
 
-## Phase 3 — Build new TS protocol layer (TDD)
+## Phase 5 — TS protocol layer (TDD)
 
-> Each task in this phase is **test-first**. Write the failing test, watch it fail, write minimal code, watch it pass, commit. Do not skip the "watch it fail" step — that confirms the test is actually exercising the new code, not an old import.
+> Each task in this phase is **test-first**. Write failing test, watch fail, implement, watch pass, commit. Don't skip the "watch fail" step.
 
-### Task 3.1: Define PicoMessage types
+### Task 5.1: pico-types.ts (TDD)
 
 **Files:**
 - Create: `apps/clawx-gui/src/lib/pico-types.ts`
 - Test: `apps/clawx-gui/src/lib/__tests__/pico-types.test.ts`
 
 - [ ] **Step 1: Write failing test**
-
-`apps/clawx-gui/src/lib/__tests__/pico-types.test.ts`:
 
 ```ts
 import { describe, it, expect, expectTypeOf } from "vitest";
@@ -275,14 +578,15 @@ describe("pico-types", () => {
 });
 ```
 
-- [ ] **Step 2: Run test, watch it fail**
+- [ ] **Step 2: Run test, watch fail**
 
-Run: `cd apps/clawx-gui && pnpm vitest run src/lib/__tests__/pico-types.test.ts`
-Expected: FAIL with "Cannot find module '../pico-types'".
+```bash
+cd apps/clawx-gui && pnpm vitest run src/lib/__tests__/pico-types.test.ts
+```
 
-- [ ] **Step 3: Implement minimal types**
+Expected: FAIL "Cannot find module '../pico-types'".
 
-`apps/clawx-gui/src/lib/pico-types.ts`:
+- [ ] **Step 3: Implement `pico-types.ts`**
 
 ```ts
 export type ClientMessageType = "message.send" | "media.send" | "ping";
@@ -340,11 +644,7 @@ export function isServerMessage(m: PicoMessage): boolean {
 }
 ```
 
-- [ ] **Step 4: Run test, watch it pass**
-
-Run: `pnpm vitest run src/lib/__tests__/pico-types.test.ts`
-Expected: PASS, 3 tests.
-
+- [ ] **Step 4: Run, watch pass.**
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -354,15 +654,13 @@ git commit -m "feat(gui): pico-types — protocol envelope + payload types"
 
 ---
 
-### Task 3.2: REST client (`pico-rest.ts`)
+### Task 5.2: pico-rest.ts (TDD)
 
 **Files:**
 - Create: `apps/clawx-gui/src/lib/pico-rest.ts`
 - Test: `apps/clawx-gui/src/lib/__tests__/pico-rest.test.ts`
 
 - [ ] **Step 1: Write failing test**
-
-`apps/clawx-gui/src/lib/__tests__/pico-rest.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -393,16 +691,14 @@ function ok(body: unknown) {
 
 describe("pico-rest", () => {
   it("fetchPicoToken returns token info", async () => {
-    fetchMock.mockResolvedValue(
-      ok({ token: "T", ws_url: "ws://x/pico/ws", enabled: true }),
-    );
+    fetchMock.mockResolvedValue(ok({ token: "T", ws_url: "ws://x/pico/ws", enabled: true }));
     const t = await fetchPicoToken();
     expect(t.token).toBe("T");
     expect(t.enabled).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith("/api/pico/token", expect.any(Object));
   });
 
-  it("listSessions passes offset/limit", async () => {
+  it("listSessions passes offset/limit + auth header", async () => {
     fetchMock.mockResolvedValue(ok([]));
     await listSessions({ offset: 10, limit: 20, token: "T" });
     expect(fetchMock).toHaveBeenCalledWith(
@@ -413,7 +709,7 @@ describe("pico-rest", () => {
     );
   });
 
-  it("getSession includes Authorization header", async () => {
+  it("getSession resolves a single session", async () => {
     fetchMock.mockResolvedValue(ok({ id: "s1", messages: [] }));
     const s = await getSession("s1", "T");
     expect(s.id).toBe("s1");
@@ -428,7 +724,7 @@ describe("pico-rest", () => {
     );
   });
 
-  it("listSkills + listTools + setToolEnabled work", async () => {
+  it("listSkills + listTools + setToolEnabled", async () => {
     fetchMock.mockResolvedValue(ok([]));
     await listSkills("T");
     await listTools("T");
@@ -444,20 +740,15 @@ describe("pico-rest", () => {
   });
 
   it("throws PicoApiError on non-2xx", async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ message: "nope" }), { status: 401 }),
-    );
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ message: "nope" }), { status: 401 }));
     await expect(fetchPicoToken()).rejects.toBeInstanceOf(PicoApiError);
   });
 });
 ```
 
-- [ ] **Step 2: Run test, watch it fail**
+- [ ] **Step 2: Run, watch fail.**
 
-Run: `pnpm vitest run src/lib/__tests__/pico-rest.test.ts`
-Expected: FAIL with module-not-found.
-
-- [ ] **Step 3: Implement `pico-rest.ts`**
+- [ ] **Step 3: Implement `pico-rest.ts`** (full code below — copy verbatim, do not abbreviate)
 
 ```ts
 export interface PicoTokenInfo {
@@ -578,11 +869,7 @@ export function setToolEnabled(
 }
 ```
 
-- [ ] **Step 4: Run test, watch it pass**
-
-Expected: 6 tests pass.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Run, watch pass. Commit.**
 
 ```bash
 git add apps/clawx-gui/src/lib/pico-rest.ts apps/clawx-gui/src/lib/__tests__/pico-rest.test.ts
@@ -591,7 +878,7 @@ git commit -m "feat(gui): pico-rest — REST client for picoclaw /api/*"
 
 ---
 
-### Task 3.3: WebSocket client (`pico-socket.ts`)
+### Task 5.3: pico-socket.ts (TDD)
 
 **Files:**
 - Create: `apps/clawx-gui/src/lib/pico-socket.ts`
@@ -620,9 +907,7 @@ class FakeWS {
     this.protocols = protocols;
     FakeWS.instances.push(this);
   }
-  send(data: string) {
-    this.sent.push(data);
-  }
+  send(data: string) { this.sent.push(data); }
   close(code = 1000) {
     this.readyState = 3;
     this.onclose?.({ code, reason: "" });
@@ -643,11 +928,7 @@ beforeEach(() => {
 
 describe("PicoSocket", () => {
   it("connects with token subprotocol and session_id query", () => {
-    const s = new PicoSocket({
-      wsBase: "ws://h/pico/ws",
-      sessionId: "S1",
-      token: "TKN",
-    });
+    const s = new PicoSocket({ wsBase: "ws://h/pico/ws", sessionId: "S1", token: "TKN" });
     s.connect();
     const ws = FakeWS.instances[0]!;
     expect(ws.url).toBe("ws://h/pico/ws?session_id=S1");
@@ -656,30 +937,16 @@ describe("PicoSocket", () => {
 
   it("dispatches parsed server messages to onMessage", () => {
     const onMsg = vi.fn();
-    const s = new PicoSocket({
-      wsBase: "ws://h/pico/ws",
-      sessionId: "S1",
-      token: "TKN",
-      onMessage: onMsg,
-    });
+    const s = new PicoSocket({ wsBase: "ws://h/pico/ws", sessionId: "S1", token: "TKN", onMessage: onMsg });
     s.connect();
     const ws = FakeWS.instances[0]!;
     ws.open();
-    ws.emit({
-      type: "message.create",
-      payload: { message_id: "m1", content: "hi" },
-    });
-    expect(onMsg).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "message.create" }),
-    );
+    ws.emit({ type: "message.create", payload: { message_id: "m1", content: "hi" } });
+    expect(onMsg).toHaveBeenCalledWith(expect.objectContaining({ type: "message.create" }));
   });
 
   it("send wraps client message into envelope JSON", () => {
-    const s = new PicoSocket({
-      wsBase: "ws://h/pico/ws",
-      sessionId: "S1",
-      token: "TKN",
-    });
+    const s = new PicoSocket({ wsBase: "ws://h/pico/ws", sessionId: "S1", token: "TKN" });
     s.connect();
     const ws = FakeWS.instances[0]!;
     ws.open();
@@ -693,11 +960,7 @@ describe("PicoSocket", () => {
   });
 
   it("queues sends until socket open, flushes on open", () => {
-    const s = new PicoSocket({
-      wsBase: "ws://h/pico/ws",
-      sessionId: "S1",
-      token: "TKN",
-    });
+    const s = new PicoSocket({ wsBase: "ws://h/pico/ws", sessionId: "S1", token: "TKN" });
     s.connect();
     const ws = FakeWS.instances[0]!;
     s.send({ type: "message.send", payload: { content: "queued" } });
@@ -707,11 +970,7 @@ describe("PicoSocket", () => {
   });
 
   it("close stops further reconnects", () => {
-    const s = new PicoSocket({
-      wsBase: "ws://h/pico/ws",
-      sessionId: "S1",
-      token: "TKN",
-    });
+    const s = new PicoSocket({ wsBase: "ws://h/pico/ws", sessionId: "S1", token: "TKN" });
     s.connect();
     s.close();
     const ws = FakeWS.instances[0]!;
@@ -721,9 +980,7 @@ describe("PicoSocket", () => {
 });
 ```
 
-- [ ] **Step 2: Run test, watch it fail**
-
-Expected: FAIL, module not found.
+- [ ] **Step 2: Run, watch fail.**
 
 - [ ] **Step 3: Implement `pico-socket.ts`**
 
@@ -731,7 +988,7 @@ Expected: FAIL, module not found.
 import type { PicoMessage } from "./pico-types";
 
 export interface PicoSocketOptions {
-  wsBase: string;        // e.g. "ws://127.0.0.1:18790/pico/ws"
+  wsBase: string;
   sessionId: string;
   token: string;
   onMessage?: (msg: PicoMessage) => void;
@@ -754,9 +1011,7 @@ export class PicoSocket {
 
   connect(): void {
     this.closedByUser = false;
-    const url = `${this.opts.wsBase}?session_id=${encodeURIComponent(
-      this.opts.sessionId,
-    )}`;
+    const url = `${this.opts.wsBase}?session_id=${encodeURIComponent(this.opts.sessionId)}`;
     const ws = new WebSocket(url, [`token.${this.opts.token}`]);
     this.ws = ws;
     ws.onopen = () => {
@@ -807,11 +1062,7 @@ export class PicoSocket {
 }
 ```
 
-- [ ] **Step 4: Run test, watch it pass**
-
-Expected: 5 tests pass.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Run, watch pass. Commit.**
 
 ```bash
 git add apps/clawx-gui/src/lib/pico-socket.ts apps/clawx-gui/src/lib/__tests__/pico-socket.test.ts
@@ -820,7 +1071,7 @@ git commit -m "feat(gui): pico-socket — WS client w/ subprotocol auth, queue, 
 
 ---
 
-### Task 3.4: Chat store (message-id merge, no SSE)
+### Task 5.4: chat-store.ts (TDD)
 
 **Files:**
 - Create: `apps/clawx-gui/src/lib/chat-store.ts`
@@ -834,9 +1085,7 @@ import { ChatStore } from "../chat-store";
 
 describe("ChatStore", () => {
   let s: ChatStore;
-  beforeEach(() => {
-    s = new ChatStore();
-  });
+  beforeEach(() => { s = new ChatStore(); });
 
   it("addUser optimistically appends user message", () => {
     const id = s.addUser("hi");
@@ -845,37 +1094,22 @@ describe("ChatStore", () => {
   });
 
   it("applyServer message.create appends assistant message", () => {
-    s.applyServer({
-      type: "message.create",
-      payload: { message_id: "m1", content: "hello" },
-    });
+    s.applyServer({ type: "message.create", payload: { message_id: "m1", content: "hello" } });
     expect(s.messages).toHaveLength(1);
     expect(s.messages[0]).toMatchObject({
-      id: "m1",
-      role: "assistant",
-      content: "hello",
-      thought: false,
+      id: "m1", role: "assistant", content: "hello", thought: false,
     });
   });
 
   it("applyServer message.update merges by message_id", () => {
-    s.applyServer({
-      type: "message.create",
-      payload: { message_id: "m1", content: "hel" },
-    });
-    s.applyServer({
-      type: "message.update",
-      payload: { message_id: "m1", content: "hello world" },
-    });
+    s.applyServer({ type: "message.create", payload: { message_id: "m1", content: "hel" } });
+    s.applyServer({ type: "message.update", payload: { message_id: "m1", content: "hello world" } });
     expect(s.messages).toHaveLength(1);
     expect(s.messages[0]!.content).toBe("hello world");
   });
 
   it("thought:true messages tagged as thought", () => {
-    s.applyServer({
-      type: "message.create",
-      payload: { message_id: "t1", content: "thinking…", thought: true },
-    });
+    s.applyServer({ type: "message.create", payload: { message_id: "t1", content: "thinking…", thought: true } });
     expect(s.messages[0]!.thought).toBe(true);
   });
 
@@ -889,10 +1123,7 @@ describe("ChatStore", () => {
   it("error with request_id rolls back optimistic user message", () => {
     const id = s.addUser("oops", "REQ1");
     expect(s.messages).toHaveLength(1);
-    s.applyServer({
-      type: "error",
-      payload: { code: "RATE_LIMIT", message: "slow down", request_id: "REQ1" },
-    });
+    s.applyServer({ type: "error", payload: { code: "RATE_LIMIT", message: "slow down", request_id: "REQ1" } });
     expect(s.messages.find((m) => m.id === id)).toBeUndefined();
     expect(s.lastError?.code).toBe("RATE_LIMIT");
   });
@@ -901,10 +1132,7 @@ describe("ChatStore", () => {
     let calls = 0;
     s.subscribe(() => calls++);
     s.addUser("a");
-    s.applyServer({
-      type: "message.create",
-      payload: { message_id: "m", content: "b" },
-    });
+    s.applyServer({ type: "message.create", payload: { message_id: "m", content: "b" } });
     expect(calls).toBeGreaterThanOrEqual(2);
   });
 });
@@ -980,33 +1208,24 @@ export class ChatStore {
         );
         break;
       }
-      case "typing.start":
-        this.typing = true;
-        break;
-      case "typing.stop":
-        this.typing = false;
-        break;
+      case "typing.start": this.typing = true; break;
+      case "typing.stop": this.typing = false; break;
       case "error": {
         const p = msg.payload as ErrorPayload;
         this.lastError = p;
         if (p.request_id) {
-          this.messages = this.messages.filter(
-            (m) => m.requestId !== p.request_id,
-          );
+          this.messages = this.messages.filter((m) => m.requestId !== p.request_id);
         }
         break;
       }
-      default:
-        return;
+      default: return;
     }
     this.emit();
   }
 }
 ```
 
-- [ ] **Step 4: Run, watch pass.**
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Run, watch pass. Commit.**
 
 ```bash
 git add apps/clawx-gui/src/lib/chat-store.ts apps/clawx-gui/src/lib/__tests__/chat-store.test.ts
@@ -1015,17 +1234,13 @@ git commit -m "feat(gui): chat-store — message-id merge store + optimistic rol
 
 ---
 
-### Task 3.5: React store wrapper (`store.tsx`)
+### Task 5.5: store.tsx React provider (TDD)
 
 **Files:**
 - Modify (rewrite): `apps/clawx-gui/src/lib/store.tsx`
 - Test: `apps/clawx-gui/src/lib/__tests__/store.test.tsx`
 
-- [ ] **Step 1: Read current store.tsx so we know what to delete**
-
-Open the file. Catalogue every export so we can grep for callers later.
-
-- [ ] **Step 2: Write failing test**
+- [ ] **Step 1: Write failing test**
 
 ```tsx
 import { describe, it, expect, vi } from "vitest";
@@ -1054,20 +1269,13 @@ describe("ClawProvider / useClaw", () => {
 });
 ```
 
-- [ ] **Step 3: Run, watch fail.**
+- [ ] **Step 2: Run, watch fail.**
 
-- [ ] **Step 4: Implement `store.tsx`**
-
-Replace the entire file:
+- [ ] **Step 3: Rewrite `store.tsx`**
 
 ```tsx
 import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+  createContext, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from "react";
 import { fetchPicoToken, type PicoTokenInfo } from "./pico-rest";
@@ -1086,10 +1294,6 @@ export interface ClawContextValue {
 }
 
 const Ctx = createContext<ClawContextValue | null>(null);
-
-function newSessionId(): string {
-  return crypto.randomUUID();
-}
 
 export function ClawProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
@@ -1110,18 +1314,13 @@ export function ClawProvider({ children }: { children: ReactNode }) {
     return info;
   };
 
-  useEffect(() => {
-    refreshToken().catch(() => undefined);
-  }, []);
+  useEffect(() => { refreshToken().catch(() => undefined); }, []);
 
-  // (Re)connect when we have token + sessionId
   useEffect(() => {
     if (!token || !wsUrl || !sessionId) return;
     sockRef.current?.close();
     const s = new PicoSocket({
-      wsBase: wsUrl,
-      sessionId,
-      token,
+      wsBase: wsUrl, sessionId, token,
       onMessage: (m) => chatRef.current.applyServer(m),
     });
     s.connect();
@@ -1129,28 +1328,19 @@ export function ClawProvider({ children }: { children: ReactNode }) {
     return () => s.close();
   }, [token, wsUrl, sessionId]);
 
-  const startNewSession = () => setSessionId(newSessionId());
+  const startNewSession = () => setSessionId(crypto.randomUUID());
 
   const sendUserMessage = (content: string) => {
     if (!sockRef.current || !sessionId) return;
     const reqId = chatRef.current.addUser(content);
-    sockRef.current.send({
-      type: "message.send",
-      id: reqId,
-      payload: { content },
-    });
+    sockRef.current.send({ type: "message.send", id: reqId, payload: { content } });
   };
 
   const value = useMemo<ClawContextValue>(
     () => ({
-      token,
-      wsUrl,
-      enabled,
-      sessionId,
+      token, wsUrl, enabled, sessionId,
       chat: chatRef.current,
-      startNewSession,
-      sendUserMessage,
-      refreshToken,
+      startNewSession, sendUserMessage, refreshToken,
     }),
     [token, wsUrl, enabled, sessionId],
   );
@@ -1165,9 +1355,7 @@ export function useClaw(): ClawContextValue {
 }
 ```
 
-- [ ] **Step 5: Run, watch pass.**
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Run, watch pass. Commit.**
 
 ```bash
 git add apps/clawx-gui/src/lib/store.tsx apps/clawx-gui/src/lib/__tests__/store.test.tsx
@@ -1176,26 +1364,21 @@ git commit -m "feat(gui): rewrite store.tsx around picoclaw protocol"
 
 ---
 
-## Phase 4 — Rewire ChatPage
+## Phase 6 — Rewire ChatPage
 
-### Task 4.1: Strip old api.ts/types.ts/chat-stream-store.ts/agent-conv-memory.ts
+### Task 6.1: Delete legacy api/types/chat-stream-store/agent-conv-memory
 
-**Files (delete):**
-- `apps/clawx-gui/src/lib/api.ts`
-- `apps/clawx-gui/src/lib/types.ts`
-- `apps/clawx-gui/src/lib/chat-stream-store.ts`
-- `apps/clawx-gui/src/lib/agent-conv-memory.ts`
-- `apps/clawx-gui/src/lib/__tests__/api.test.ts`
-- `apps/clawx-gui/src/lib/__tests__/sse.test.ts`
-- `apps/clawx-gui/src/lib/__tests__/chat-stream-store.test.ts`
+**Files (delete):** `apps/clawx-gui/src/lib/{api,types,chat-stream-store,agent-conv-memory}.ts` and matching `__tests__/{api,sse,chat-stream-store}.test.ts`.
 
-- [ ] **Step 1: List all files importing from these modules**
+- [ ] **Step 1: List all importers**
 
-Run: `Grep` for `from "./api"`, `from "./types"`, `from "./chat-stream-store"`, `from "./agent-conv-memory"` (and `from "../lib/api"` etc. variants) under `apps/clawx-gui/src/`.
+```bash
+grep -RIn "from .*lib/\(api\|types\|chat-stream-store\|agent-conv-memory\)" apps/clawx-gui/src
+```
 
-Expected: a list of files. Record it for Task 4.2 + 6.x.
+Record the list — Task 6.2 + Phase 8 will fix them.
 
-- [ ] **Step 2: Delete the files**
+- [ ] **Step 2: git rm**
 
 ```bash
 git rm apps/clawx-gui/src/lib/api.ts \
@@ -1209,9 +1392,9 @@ git rm apps/clawx-gui/src/lib/api.ts \
 
 - [ ] **Step 3: Acknowledge break**
 
-`pnpm build` will fail with hundreds of TS errors at every callsite. That is **expected**. The next tasks (4.2 + Phase 6) systematically restore green.
+`pnpm build` will fail. Subsequent tasks restore green.
 
-- [ ] **Step 4: Commit (broken-build commit, intentional)**
+- [ ] **Step 4: Commit**
 
 ```bash
 git commit -m "refactor!: drop legacy ClawX REST/SSE client (breaks build, fixed in subsequent commits)"
@@ -1219,7 +1402,7 @@ git commit -m "refactor!: drop legacy ClawX REST/SSE client (breaks build, fixed
 
 ---
 
-### Task 4.2: Rewire `ChatPage.tsx` to `useClaw()`
+### Task 6.2: Rewire ChatPage to useClaw()
 
 **Files:**
 - Modify: `apps/clawx-gui/src/pages/ChatPage.tsx`
@@ -1227,7 +1410,7 @@ git commit -m "refactor!: drop legacy ClawX REST/SSE client (breaks build, fixed
 
 - [ ] **Step 1: Read current ChatPage.tsx**
 
-Identify which imports came from the deleted modules. Note the JSX structure for `MessageBubble`, `ChatInput`, `ChatWelcome` so we can keep their existing prop contracts.
+Note its imports and JSX structure for `MessageBubble`, `ChatInput`, `ChatWelcome`. Plan the new prop signatures.
 
 - [ ] **Step 2: Write failing test**
 
@@ -1264,7 +1447,7 @@ class FakeWS {
 vi.stubGlobal("WebSocket", FakeWS as unknown as typeof WebSocket);
 
 describe("ChatPage", () => {
-  it("renders welcome state, sends a message, renders assistant reply", async () => {
+  it("welcome → user send → assistant reply renders", async () => {
     render(
       <MemoryRouter>
         <ClawProvider>
@@ -1273,10 +1456,8 @@ describe("ChatPage", () => {
       </MemoryRouter>,
     );
     await act(async () => {});
-    // Welcome visible (no messages)
     expect(screen.getByTestId("chat-welcome")).toBeInTheDocument();
 
-    // Send a user message
     const input = screen.getByRole("textbox");
     await act(async () => {
       fireEvent.change(input, { target: { value: "hello" } });
@@ -1284,7 +1465,6 @@ describe("ChatPage", () => {
     });
     expect(screen.getByText("hello")).toBeInTheDocument();
 
-    // Simulate assistant message arriving from server
     await act(async () => {
       FakeWS.last.onmessage?.({
         data: JSON.stringify({
@@ -1297,8 +1477,6 @@ describe("ChatPage", () => {
   });
 });
 ```
-
-(Add `data-testid="chat-welcome"` to `ChatWelcome`'s root element if it doesn't already have one. If `ChatInput` doesn't render an actual `<form>`, wrap its onSubmit in one.)
 
 - [ ] **Step 3: Run, watch fail.**
 
@@ -1321,9 +1499,8 @@ export default function ChatPage() {
   if (!claw.enabled) {
     return (
       <div className="p-8 text-center text-sm text-neutral-500">
-        Pico channel disabled. Open the picoclaw launcher
-        ({" "}<a href="http://127.0.0.1:18800" className="underline">:18800</a>{" "})
-        and enable it, then refresh.
+        Pico channel disabled. Edit <code>~/.picoclaw/config.json</code>:
+        set <code>channels.pico.enabled = true</code> and restart the launcher.
       </div>
     );
   }
@@ -1346,9 +1523,7 @@ export default function ChatPage() {
           ))
         )}
         {typing && (
-          <div className="text-xs text-neutral-400" data-testid="typing">
-            …
-          </div>
+          <div className="text-xs text-neutral-400" data-testid="typing">…</div>
         )}
       </div>
       <ChatInput onSubmit={(text) => claw.sendUserMessage(text)} />
@@ -1357,13 +1532,9 @@ export default function ChatPage() {
 }
 ```
 
-- [ ] **Step 5: Update ChatWelcome to expose testid**
+- [ ] **Step 5: Adapt `ChatWelcome` (root must have `data-testid="chat-welcome"`).**
 
-`apps/clawx-gui/src/components/ChatWelcome.tsx`: ensure root element has `data-testid="chat-welcome"`. If absent, add it; otherwise skip.
-
-- [ ] **Step 6: Update MessageBubble props**
-
-If `MessageBubble` currently expects a `Message` from `lib/types`, change its prop signature to:
+- [ ] **Step 6: Adapt `MessageBubble` props**
 
 ```tsx
 interface MessageBubbleProps {
@@ -1373,15 +1544,13 @@ interface MessageBubbleProps {
 }
 ```
 
-Render `thought` variant with a subdued style (e.g. lower opacity, "thinking" label).
+`thought` variant: muted opacity / "thinking" label. Keep markdown rendering for `content` if it was there before.
 
-- [ ] **Step 7: Update ChatInput**
+- [ ] **Step 7: Adapt `ChatInput`**
 
-Ensure it has signature `{ onSubmit: (text: string) => void }` and submits a `<form>` so the test's `fireEvent.submit` works.
+Signature: `{ onSubmit: (text: string) => void }`. Wrap in `<form>` so test's `fireEvent.submit` works. Clear input on submit.
 
-- [ ] **Step 8: Run, watch pass.**
-
-- [ ] **Step 9: Commit**
+- [ ] **Step 8: Run, watch pass. Commit.**
 
 ```bash
 git add apps/clawx-gui/src/pages/ChatPage.tsx \
@@ -1394,15 +1563,15 @@ git commit -m "feat(gui): ChatPage uses Pico WS; bubble + input adapted"
 
 ---
 
-## Phase 5 — Connectors + Settings as REST shells
+## Phase 7 — Settings + Connectors
 
-### Task 5.1: Rewrite SettingsPage
+### Task 7.1: SettingsPage
 
 **Files:**
 - Modify: `apps/clawx-gui/src/pages/SettingsPage.tsx`
 - Test: `apps/clawx-gui/src/pages/__tests__/SettingsPage.test.tsx`
 
-- [ ] **Step 1: Write failing test**
+- [ ] **Step 1: Failing test**
 
 ```tsx
 import { describe, it, expect, vi } from "vitest";
@@ -1421,11 +1590,7 @@ vi.mock("../../lib/pico-rest", () => ({ fetchPicoToken: refresh }));
 describe("SettingsPage", () => {
   it("renders token + ws_url + enabled, supports refresh", async () => {
     render(
-      <MemoryRouter>
-        <ClawProvider>
-          <SettingsPage />
-        </ClawProvider>
-      </MemoryRouter>,
+      <MemoryRouter><ClawProvider><SettingsPage /></ClawProvider></MemoryRouter>,
     );
     await act(async () => {});
     expect(screen.getByText(/ABC/)).toBeInTheDocument();
@@ -1456,20 +1621,15 @@ export default function SettingsPage() {
           <dt>WebSocket URL</dt><dd className="font-mono">{claw.wsUrl ?? "(none)"}</dd>
           <dt>Enabled</dt><dd>{claw.enabled ? "yes" : "no"}</dd>
         </dl>
-        <button
-          className="mt-3 rounded bg-neutral-200 px-3 py-1 text-sm"
-          onClick={() => claw.refreshToken()}
-        >
+        <button className="mt-3 rounded bg-neutral-200 px-3 py-1 text-sm"
+                onClick={() => claw.refreshToken()}>
           Refresh
         </button>
       </section>
       <section className="text-xs text-neutral-500">
-        To change the token or enable/disable the channel, use the picoclaw
-        launcher at{" "}
-        <a className="underline" href="http://127.0.0.1:18800" target="_blank" rel="noreferrer">
-          http://127.0.0.1:18800
-        </a>
-        .
+        To change the token or enable / disable the channel, edit
+        <code className="mx-1">~/.picoclaw/config.json</code>
+        and restart the launcher.
       </section>
     </div>
   );
@@ -1485,13 +1645,13 @@ git commit -m "feat(gui): SettingsPage shows Pico token / ws URL / enabled"
 
 ---
 
-### Task 5.2: Rewrite ConnectorsPage as Skills + Tools browser
+### Task 7.2: ConnectorsPage = skills + tools browser
 
 **Files:**
 - Modify: `apps/clawx-gui/src/pages/ConnectorsPage.tsx`
 - Test: `apps/clawx-gui/src/pages/__tests__/ConnectorsPage.test.tsx`
 
-- [ ] **Step 1: Write failing test**
+- [ ] **Step 1: Failing test**
 
 ```tsx
 import { describe, it, expect, vi } from "vitest";
@@ -1501,11 +1661,7 @@ import ConnectorsPage from "../ConnectorsPage";
 import { ClawProvider } from "../../lib/store";
 
 vi.mock("../../lib/pico-rest", () => ({
-  fetchPicoToken: vi.fn().mockResolvedValue({
-    token: "T",
-    ws_url: "ws://x",
-    enabled: true,
-  }),
+  fetchPicoToken: vi.fn().mockResolvedValue({ token: "T", ws_url: "ws://x", enabled: true }),
   listSkills: vi.fn().mockResolvedValue([{ name: "weather" }, { name: "code-runner" }]),
   listTools: vi.fn().mockResolvedValue([
     { name: "web_search", enabled: true },
@@ -1515,23 +1671,17 @@ vi.mock("../../lib/pico-rest", () => ({
 }));
 
 describe("ConnectorsPage", () => {
-  it("lists skills and tools; toggling a tool calls the API", async () => {
+  it("lists skills + tools; toggling a tool calls API", async () => {
     render(
-      <MemoryRouter>
-        <ClawProvider>
-          <ConnectorsPage />
-        </ClawProvider>
-      </MemoryRouter>,
+      <MemoryRouter><ClawProvider><ConnectorsPage /></ClawProvider></MemoryRouter>,
     );
     await act(async () => {});
-    expect(screen.getByText("weather")).toBeInTheDocument();
+    expect(await screen.findByText("weather")).toBeInTheDocument();
     expect(screen.getByText("code-runner")).toBeInTheDocument();
     expect(screen.getByText("web_search")).toBeInTheDocument();
 
     const toggle = screen.getByRole("checkbox", { name: /web_search/i });
-    await act(async () => {
-      fireEvent.click(toggle);
-    });
+    await act(async () => { fireEvent.click(toggle); });
     const { setToolEnabled } = await import("../../lib/pico-rest");
     expect(setToolEnabled).toHaveBeenCalledWith("web_search", false, "T");
   });
@@ -1544,13 +1694,7 @@ describe("ConnectorsPage", () => {
 
 ```tsx
 import { useEffect, useState } from "react";
-import {
-  listSkills,
-  listTools,
-  setToolEnabled,
-  type SkillInfo,
-  type ToolInfo,
-} from "../lib/pico-rest";
+import { listSkills, listTools, setToolEnabled, type SkillInfo, type ToolInfo } from "../lib/pico-rest";
 import { useClaw } from "../lib/store";
 
 export default function ConnectorsPage() {
@@ -1568,9 +1712,8 @@ export default function ConnectorsPage() {
     if (!claw.token) return;
     const next = !t.enabled;
     setTools((arr) => arr.map((x) => (x.name === t.name ? { ...x, enabled: next } : x)));
-    try {
-      await setToolEnabled(t.name, next, claw.token);
-    } catch {
+    try { await setToolEnabled(t.name, next, claw.token); }
+    catch {
       setTools((arr) => arr.map((x) => (x.name === t.name ? { ...x, enabled: t.enabled } : x)));
     }
   };
@@ -1594,13 +1737,8 @@ export default function ConnectorsPage() {
         <ul className="mt-2 space-y-1 text-sm">
           {tools.map((t) => (
             <li key={t.name} className="flex items-center gap-2">
-              <input
-                id={`tool-${t.name}`}
-                type="checkbox"
-                aria-label={t.name}
-                checked={t.enabled}
-                onChange={() => toggle(t)}
-              />
+              <input id={`tool-${t.name}`} type="checkbox" aria-label={t.name}
+                     checked={t.enabled} onChange={() => toggle(t)} />
               <label htmlFor={`tool-${t.name}`} className="font-mono">{t.name}</label>
             </li>
           ))}
@@ -1620,29 +1758,23 @@ git commit -m "feat(gui): ConnectorsPage = picoclaw skills + tools browser"
 
 ---
 
-## Phase 6 — Delete obsolete pages, components, and routes
+## Phase 8 — Delete obsolete pages, components, routes
 
-### Task 6.1: Delete obsolete pages
+### Task 8.1: Delete obsolete pages
 
-**Files (delete):**
-- `apps/clawx-gui/src/pages/AgentsPage.tsx`
-- `apps/clawx-gui/src/pages/TasksPage.tsx`
-- `apps/clawx-gui/src/pages/KnowledgePage.tsx`
-- `apps/clawx-gui/src/pages/ContactsPage.tsx`
-- All matching files under `apps/clawx-gui/src/pages/__tests__/` (e.g. `AgentsPage.test.tsx` if present)
+**Files (delete):** `AgentsPage.tsx`, `TasksPage.tsx`, `KnowledgePage.tsx`, `ContactsPage.tsx`, and matching tests.
 
-- [ ] **Step 1: List which page tests exist**
-
-Run: `Glob` `apps/clawx-gui/src/pages/__tests__/*.test.tsx`. Note any that match the pages above so we delete them too.
-
-- [ ] **Step 2: git rm them**
+- [ ] **Step 1: List matching tests**
 
 ```bash
-git rm apps/clawx-gui/src/pages/AgentsPage.tsx \
-        apps/clawx-gui/src/pages/TasksPage.tsx \
-        apps/clawx-gui/src/pages/KnowledgePage.tsx \
-        apps/clawx-gui/src/pages/ContactsPage.tsx
-# plus any matching tests from Step 1
+ls apps/clawx-gui/src/pages/__tests__/*.test.tsx
+```
+
+- [ ] **Step 2: git rm**
+
+```bash
+git rm apps/clawx-gui/src/pages/{AgentsPage,TasksPage,KnowledgePage,ContactsPage}.tsx
+# plus matching tests
 ```
 
 - [ ] **Step 3: Commit**
@@ -1653,48 +1785,19 @@ git commit -m "refactor!: remove agents/tasks/knowledge/contacts pages (no picoc
 
 ---
 
-### Task 6.2: Delete obsolete components
+### Task 8.2: Delete obsolete components
 
-**Files (delete):**
-- `apps/clawx-gui/src/components/AddProviderModal.tsx`
-- `apps/clawx-gui/src/components/AgentGridCard.tsx`
-- `apps/clawx-gui/src/components/AgentModelAssignTable.tsx`
-- `apps/clawx-gui/src/components/AgentSidebar.tsx`
-- `apps/clawx-gui/src/components/AgentTemplateModal.tsx`
-- `apps/clawx-gui/src/components/ArtifactsPanel.tsx`
-- `apps/clawx-gui/src/components/AvailableChannelChip.tsx`
-- `apps/clawx-gui/src/components/ConnectorCard.tsx`
-- `apps/clawx-gui/src/components/KnowledgeSearchPanel.tsx`
-- `apps/clawx-gui/src/components/KnowledgeSourceList.tsx`
-- `apps/clawx-gui/src/components/ModelProviderCard.tsx`
-- `apps/clawx-gui/src/components/SkillStore.tsx` (subsumed by ConnectorsPage)
-- `apps/clawx-gui/src/components/SourceReferences.tsx`
-- `apps/clawx-gui/src/components/TaskCard.tsx`
-- All matching tests under `apps/clawx-gui/src/components/__tests__/`
+**Files (delete, 14 components):** `AddProviderModal`, `AgentGridCard`, `AgentModelAssignTable`, `AgentSidebar`, `AgentTemplateModal`, `ArtifactsPanel`, `AvailableChannelChip`, `ConnectorCard`, `KnowledgeSearchPanel`, `KnowledgeSourceList`, `ModelProviderCard`, `SkillStore`, `SourceReferences`, `TaskCard` — and any matching `__tests__/`.
 
-- [ ] **Step 1: List matching component tests**
+- [ ] **Step 1: List matching tests**
 
-Run: `Glob` `apps/clawx-gui/src/components/__tests__/*.test.tsx`. Note matching ones for deletion.
+```bash
+ls apps/clawx-gui/src/components/__tests__/*.test.tsx
+```
 
 - [ ] **Step 2: git rm them all**
 
-```bash
-git rm apps/clawx-gui/src/components/AddProviderModal.tsx \
-        apps/clawx-gui/src/components/AgentGridCard.tsx \
-        apps/clawx-gui/src/components/AgentModelAssignTable.tsx \
-        apps/clawx-gui/src/components/AgentSidebar.tsx \
-        apps/clawx-gui/src/components/AgentTemplateModal.tsx \
-        apps/clawx-gui/src/components/ArtifactsPanel.tsx \
-        apps/clawx-gui/src/components/AvailableChannelChip.tsx \
-        apps/clawx-gui/src/components/ConnectorCard.tsx \
-        apps/clawx-gui/src/components/KnowledgeSearchPanel.tsx \
-        apps/clawx-gui/src/components/KnowledgeSourceList.tsx \
-        apps/clawx-gui/src/components/ModelProviderCard.tsx \
-        apps/clawx-gui/src/components/SkillStore.tsx \
-        apps/clawx-gui/src/components/SourceReferences.tsx \
-        apps/clawx-gui/src/components/TaskCard.tsx
-# plus matching tests from Step 1
-```
+(Batch the 14 paths into one `git rm` call.)
 
 - [ ] **Step 3: Commit**
 
@@ -1704,18 +1807,14 @@ git commit -m "refactor!: remove components tied to deleted domain pages"
 
 ---
 
-### Task 6.3: Update App.tsx + NavBar routes
+### Task 8.3: App.tsx + NavBar reduced to 3 routes
 
 **Files:**
 - Modify: `apps/clawx-gui/src/App.tsx`
 - Modify: `apps/clawx-gui/src/components/NavBar.tsx`
-- Modify: `apps/clawx-gui/src/components/SettingsNav.tsx` (if it lists subroutes that no longer exist)
+- Modify or delete: `apps/clawx-gui/src/components/SettingsNav.tsx`
 
-- [ ] **Step 1: Read App.tsx and identify routes**
-
-Open `App.tsx`. The router should now expose only: `/` (chat), `/connectors`, `/settings`. Remove every `<Route>` for `/agents`, `/tasks`, `/knowledge`, `/contacts`.
-
-- [ ] **Step 2: Update App.tsx**
+- [ ] **Step 1: Update App.tsx**
 
 ```tsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -1746,150 +1845,247 @@ export default function App() {
 }
 ```
 
-- [ ] **Step 3: Update NavBar to expose only 3 routes**
+- [ ] **Step 2: Reduce NavBar to 3 links + drop dead imports.**
+- [ ] **Step 3: SettingsNav: delete if no longer needed; otherwise prune.**
 
-Open `NavBar.tsx`. Reduce its links to: Chat (`/`), Connectors (`/connectors`), Settings (`/settings`). Delete any imports of removed icons/components.
-
-- [ ] **Step 4: Update SettingsNav**
-
-If it referenced old subpages, prune to only what SettingsPage actually has (currently a single section, so SettingsNav can be deleted entirely; if so `git rm` it and remove import sites).
-
-- [ ] **Step 5: Run smoke test**
+- [ ] **Step 4: Run vitest + build**
 
 ```bash
-cd apps/clawx-gui && pnpm vitest run
+cd apps/clawx-gui && pnpm vitest run && pnpm build
 ```
 
-Expected: all remaining tests pass. If `__smoke__.test.tsx` still references deleted modules, update or delete it.
+Expected: all green, dist emitted, zero TS errors.
 
-- [ ] **Step 6: Verify build**
-
-```bash
-pnpm build
-```
-
-Expected: `tsc -b` clean, Vite build emits `dist/`. **All TypeScript errors must be zero.**
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add apps/clawx-gui/src/App.tsx apps/clawx-gui/src/components/NavBar.tsx
-# and SettingsNav changes / deletion
 git commit -m "refactor: routes + nav reduced to chat/connectors/settings"
 ```
 
 ---
 
-## Phase 7 — Repo metadata + final verification
+## Phase 9 — Dev workflow (no docker)
 
-### Task 7.1: Rewrite README.md
+### Task 9.1: Root `package.json` for concurrent dev
 
-**Files:**
-- Modify: `/Users/zhoulingfeng/Desktop/code/makemoney/frank_claw/README.md` (or create if absent)
+**Files:** Create `/Users/zhoulingfeng/Desktop/code/makemoney/frank_claw/package.json`.
 
-- [ ] **Step 1: Read current README**
+- [ ] **Step 1: Write root package.json**
 
-If it exists, scan for Rust/Cargo/Tauri references — all must go.
+```json
+{
+  "name": "frank-claw-root",
+  "version": "0.4.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
+    "dev:backend": "cd backend && go run ./cmd/picoclaw-launcher --allow-empty",
+    "dev:frontend": "pnpm --filter clawx-gui dev",
+    "build": "pnpm build:backend && pnpm build:frontend",
+    "build:backend": "cd backend && mkdir -p build && go build -o build/picoclaw-launcher ./cmd/picoclaw-launcher",
+    "build:frontend": "pnpm --filter clawx-gui build",
+    "test": "pnpm test:backend && pnpm test:frontend",
+    "test:backend": "cd backend && go test ./...",
+    "test:frontend": "pnpm --filter clawx-gui vitest run"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
+```
 
-- [ ] **Step 2: Write new README**
+- [ ] **Step 2: Add root pnpm-workspace.yaml**
 
-Sections to include:
-1. **What this is** — "ClawX Web is a thin React frontend for [picoclaw](https://github.com/sipeed/picoclaw)."
-2. **Quick start** — `docker compose up -d picoclaw`, browser to `http://127.0.0.1:18800` to grab a token, then `cd apps/clawx-gui && pnpm install && pnpm dev`, open `http://localhost:5173`.
-3. **Repo layout** — link to `docs/arch/architecture.md`.
-4. **Architecture** — link to ADR-037 + architecture.md.
-5. **License** — keep whatever current is.
+```yaml
+packages:
+  - "apps/*"
+```
+
+- [ ] **Step 3: Install at root**
+
+```bash
+cd /Users/zhoulingfeng/Desktop/code/makemoney/frank_claw/.worktrees/picoclaw-migration
+pnpm install
+```
+
+Expected: `concurrently` installed at root; `apps/clawx-gui` linked into workspace.
+
+- [ ] **Step 4: Smoke-test the dev script (optional, manual)**
+
+```bash
+pnpm dev
+```
+
+Expected: backend prints `Gateway started on 127.0.0.1:18790`; frontend prints `Local: http://localhost:5173/`. Ctrl+C terminates both.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add package.json pnpm-workspace.yaml pnpm-lock.yaml
+git commit -m "feat: root pnpm workspace + concurrently dev script"
+```
+
+---
+
+### Task 9.2: Vite proxy for /api + /pico/ws
+
+**Files:** Modify `apps/clawx-gui/vite.config.ts`.
+
+- [ ] **Step 1: Add server.proxy block**
+
+Inside `defineConfig({...})`:
+
+```ts
+server: {
+  proxy: {
+    "/api": { target: "http://127.0.0.1:18790", changeOrigin: false },
+    "/pico/ws": { target: "ws://127.0.0.1:18790", ws: true, changeOrigin: false },
+  },
+},
+```
+
+- [ ] **Step 2: Verify (with launcher running) that `curl http://localhost:5173/api/pico/token` returns the same JSON as `curl http://127.0.0.1:18790/api/pico/token`.**
 
 - [ ] **Step 3: Commit**
+
+```bash
+git add apps/clawx-gui/vite.config.ts
+git commit -m "feat(gui): vite proxy /api + /pico/ws → :18790"
+```
+
+---
+
+### Task 9.3: Rewrite README.md
+
+**Files:** Modify or create `/Users/zhoulingfeng/Desktop/code/makemoney/frank_claw/README.md`.
+
+- [ ] **Step 1: Write README**
+
+Sections:
+1. **What this is** — "ClawX Web is a thin React frontend for [picoclaw](https://github.com/sipeed/picoclaw), whose source we vendor in `backend/` (see [ADR-037 v2](docs/arch/decisions.md))."
+2. **Prerequisites** — Go ≥ 1.25, Node ≥ 22 + pnpm, at least one LLM provider configured in `~/.picoclaw/.security.yml`.
+3. **Quick start**:
+   ```bash
+   pnpm install
+   pnpm dev   # starts backend on :18790 + frontend on :5173
+   ```
+   then open `http://localhost:5173`.
+4. **Configuring picoclaw** — `~/.picoclaw/config.json`, `~/.picoclaw/.security.yml`, the `enabled = true` requirement on the Pico channel.
+5. **Repo layout** — link to `docs/arch/architecture.md`.
+6. **Architecture** — link to ADR-037 v2 + architecture.md.
+7. **Production build** — `pnpm build` then `./backend/build/picoclaw-launcher -webroot ./apps/clawx-gui/dist -no-browser`.
+8. **License** — your existing.
+
+- [ ] **Step 2: Commit**
 
 ```bash
 git add README.md
-git commit -m "docs: README for picoclaw-backed ClawX Web"
+git commit -m "docs: README for vendored-picoclaw architecture"
 ```
 
 ---
 
-### Task 7.2: Update AGENTS.md
+### Task 9.4: Update AGENTS.md
 
-**Files:**
-- Modify: `AGENTS.md`
+**Files:** Modify `AGENTS.md`.
 
-- [ ] **Step 1: Read current AGENTS.md**
-
-It currently describes Rust workspace conventions, cargo commands, etc.
-
-- [ ] **Step 2: Strip Rust-specific sections; keep collaboration norms**
-
-Rewrite "Tech stack" and "How to build/test/run" sections to point at the new toolchain (pnpm + vitest + docker compose). Keep general collaboration / commit-message / branch conventions intact.
-
-- [ ] **Step 3: Commit**
+- [ ] **Step 1: Strip Rust + Tauri sections.**
+- [ ] **Step 2: Replace tech-stack section** with the v5.0 stack (React + Vite + TypeScript + Go + pnpm).
+- [ ] **Step 3: Replace build / test / run section** with `pnpm dev` / `pnpm build` / `pnpm test`.
+- [ ] **Step 4: Add "Modifying the backend" subsection** noting that `backend/` is a vendored picoclaw fork; any local change must be recorded in `backend/PATCHES.md`.
+- [ ] **Step 5: Keep all collaboration / commit-message conventions intact.**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add AGENTS.md
-git commit -m "docs(agents): update toolchain refs from Rust → pnpm/picoclaw"
+git commit -m "docs(agents): switch toolchain refs from Rust → pnpm/go/picoclaw"
 ```
 
 ---
 
-### Task 7.3: Final verification
+## Phase 10 — Final verification + tag v0.4.0
 
-- [ ] **Step 1: Confirm no stray Rust references remain in tracked files**
+### Task 10.1: Repo-wide hygiene check
 
-Run: `Grep` (case-insensitive) for `cargo `, `crate ::`, `clawx-runtime`, `clawx-service`, `clawx-controlplane-client`, `Tauri`, `tauri-apps`, `src-tauri`, scoped to all tracked files except `docs/arch/decisions.md` (which legitimately mentions them in ADR history) and `docs/superpowers/plans/` (this plan).
-Expected: no hits.
-
-- [ ] **Step 2: Run full test suite**
+- [ ] **Step 1: No stray Rust / Tauri / Cargo references**
 
 ```bash
-cd apps/clawx-gui && pnpm vitest run
+grep -RIn "cargo \|crate ::\|clawx-runtime\|clawx-service\|clawx-controlplane-client\|@tauri-apps\|src-tauri" \
+    --exclude-dir=docs \
+    --exclude-dir=node_modules \
+    --exclude-dir=backend \
+    .
 ```
 
-Expected: all green.
+Expected: zero matches.
 
-- [ ] **Step 3: Build production bundle**
+- [ ] **Step 2: Backend tests green**
+
+```bash
+pnpm test:backend
+```
+
+Expected: `go test ./backend/...` exits 0. (If picoclaw's own tests have flakiness, identify which test, mark `t.Skip` with a `// upstream-flake` comment, record in `backend/PATCHES.md`. Don't ignore.)
+
+- [ ] **Step 3: Frontend tests green**
+
+```bash
+pnpm test:frontend
+```
+
+Expected: all vitest suites pass.
+
+- [ ] **Step 4: Production build clean**
 
 ```bash
 pnpm build
 ```
 
-Expected: clean build, `dist/` populated.
+Expected: `backend/build/picoclaw-launcher` produced, `apps/clawx-gui/dist/` produced.
 
-- [ ] **Step 4: Manual smoke test**
+---
+
+### Task 10.2: Manual browser smoke test
+
+- [ ] **Step 1: Start everything**
 
 ```bash
-docker compose up -d picoclaw
-cd apps/clawx-gui && pnpm dev
+pnpm dev
 ```
 
-In browser at `http://localhost:5173`:
-- [ ] Chat page loads, shows "Pico channel disabled" if launcher token wasn't set up; otherwise welcome.
-- [ ] Sending "hello" appears as a user bubble immediately.
-- [ ] picoclaw replies (assuming an LLM provider is configured in the launcher) and the assistant bubble renders.
-- [ ] Refreshing the browser, the chat history reloads from the same `session_id` (verify by re-mounting; picoclaw should remember).
-- [ ] `/connectors` renders skills + tools list and a tool toggle round-trips (check Network tab for `PUT /api/tools/:name/state`).
-- [ ] `/settings` shows the token + ws URL.
+- [ ] **Step 2: In browser at `http://localhost:5173`:**
 
-- [ ] **Step 5: Tag the migration**
+- [ ] Chat page loads. If "Pico channel disabled", apply config patch from Task 1.3 Step 2 + restart launcher (Ctrl+C the dev script and re-run).
+- [ ] Send "hello" — user bubble appears immediately.
+- [ ] Assistant replies (assuming a provider is configured). Bubble renders. (If no provider, expect a `error` event in DevTools console — that's a test of the error path, not a bug.)
+- [ ] `/connectors` lists skills + tools; toggling a tool round-trips (DevTools → Network → `PUT /api/tools/:name/state`).
+- [ ] `/settings` shows the token, ws URL, enabled.
+
+---
+
+### Task 10.3: Tag v0.4.0
+
+- [ ] **Step 1: From the worktree, after PR merge to main:**
 
 ```bash
 git tag v0.4.0
-git push origin v0.4.0
+# user pushes when they want
 ```
 
-- [ ] **Step 6: Optional — open a PR**
-
-If the work was done on a branch other than `main`, open a PR titled `feat!: migrate to picoclaw backend (drop Rust)` referencing ADR-037 in the body.
+(The plan executor does NOT push tags or PRs without explicit user approval per overall safety norms.)
 
 ---
 
 ## Done.
 
-What you should now have on disk:
-- `apps/clawx-gui/` — React + Vite + TS, no Tauri, talking to picoclaw
-- `docker-compose.yml` — pinned picoclaw runtime
-- `docs/arch/{architecture,api-design,decisions}.md` — v5.0 + ADR-037
+What you should have on disk after Phase 10:
+- `apps/clawx-gui/` — React + Vite + TS, no Tauri, talks to backend via Vite proxy
+- `backend/` — vendored picoclaw Go source at SHA `8461c996…`, compiled by `pnpm build:backend`
+- `docs/arch/{architecture,api-design,decisions}.md` — v5.0 + ADR-037 v2
 - `docs/arch/{autonomy,memory,security,data-model,crate-dependency-graph}-architecture.md` — historical, deprecation banner
+- `backend/UPSTREAM.md`, `backend/PATCHES.md` — provenance + local-change ledger
+- Root `package.json` + `pnpm-workspace.yaml` — `pnpm dev` runs everything
 - `README.md` — quick-start for the new shape
 - Tag: `v0.4.0`
 
-What's gone: 17 Rust crates, 2 Rust app binaries, Tauri shell, custom REST/SSE backend, every domain UI not directly tied to chatting with an LLM.
+What's gone: 17 Rust crates, 2 Rust app binaries, Tauri shell, custom REST/SSE backend, every domain UI not directly tied to chatting with an LLM, all docker artifacts.

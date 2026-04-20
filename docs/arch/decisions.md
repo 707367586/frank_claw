@@ -317,45 +317,57 @@
 
 ---
 
-## ADR-037: 2026-04-20 全面迁移至 picoclaw 后端，删除全部 Rust 代码
+## ADR-037: 2026-04-20 删除 Rust 后端，将 picoclaw 源码 vendor 进本仓库作为新后端
 
-**状态:** Accepted — 同时 SUPERSEDES：ADR-001 / 002 / 003 / 004 / 005 / 008 / 009 / 010 / 011 / 014 / 015 / 016 / 017 / 018 / 019 / 020 / 023 / 024 / 025 / 027 / 028 / 029 / 030 / 031 / 032 / 033 / 034 / 035 / 036。仅 ADR-006 / 007 / 012 / 013 / 021 / 022 / 026 作为历史记录保留。
+**状态:** Accepted — SUPERSEDES：ADR-001 / 002 / 003 / 004 / 005 / 008 / 009 / 010 / 011 / 014 / 015 / 016 / 017 / 018 / 019 / 020 / 023 / 024 / 025 / 027 / 028 / 029 / 030 / 031 / 032 / 033 / 034 / 035 / 036。仅 ADR-006 / 007 / 012 / 013 / 021 / 022 / 026 作为历史记录保留。
+
+**修订历史:**
+
+- 2026-04-20 v1：决定"以官方二进制 / docker-compose 形式消费 picoclaw，不 fork、不维护补丁"。
+- 2026-04-20 **v2（当前）**：实证发现已发布的 `:v0.2.6` 镜像缺失计划所依赖的 `/api/*` REST 端点和 launcher 子命令；`web/frontend` + 完整 `/api/*` 仅在主分支源码中存在。结论：**只能 vendor 源码**。同时用户明确允许"修改 picoclaw 代码"，故放弃"不 fork"约束。
 
 **背景:**
 
-ClawX 自研 Rust 后端在 v0.3 节点完成了"agentic tool-use loop Phase 1"（ADR-036）。但同期上游开源项目 [sipeed/picoclaw](https://github.com/sipeed/picoclaw) 已经把"个人 AI Agent 守护进程"做成了：单文件 Go 二进制、内置 30+ LLM provider、原生 MCP / Skills / Hooks / SubTurn / Channels 抽象、跨平台（含 RISC-V SBC）、MIT 协议、社区活跃（28k stars，~2.5 个月）。继续维护 17 个 Rust crate 的边际成本远高于复用 picoclaw 的迁移成本。
+ClawX 自研 Rust 后端在 v0.3 完成了"agentic tool-use loop Phase 1"（ADR-036）。同期上游 [sipeed/picoclaw](https://github.com/sipeed/picoclaw) 已实现：单文件 Go 二进制、内置 30+ LLM provider、原生 MCP / Skills / Hooks / SubTurn / Channels 抽象、MIT 协议。继续维护 17 个 Rust crate 的边际成本远高于复用 picoclaw 的源码。
 
-**决策:**
+**决策（v2）:**
 
-1. **删除整个 Rust workspace**：所有 `crates/*`、`apps/clawx-service`、`apps/clawx-cli`、`Cargo.{toml,lock}`、`rust-toolchain.toml`、`clippy.toml`、`rustfmt.toml`、`target/` 一并清除。
-2. **后端 = picoclaw**：以官方二进制或 docker-compose 形式作为外部进程运行，不 fork、不维护补丁。
-3. **前端从 Tauri 桌面 app 退化为纯 Web 前端**：保留 `apps/clawx-gui/src/` 中"对话"相关的 React 组件与样式；删除 `src-tauri/`、`@tauri-apps/cli` 依赖、`tauri` 脚本。前端由 Vite 构建为静态资产，可由 picoclaw 自带 launcher 托管，也可独立部署。
-4. **协议层换血**：弃用自研的 40+ REST 端点 + SSE。前端直接对接 picoclaw 的"Pico Channel" WebSocket（`/pico/ws`）+ REST（`/api/sessions`、`/api/skills`、`/api/tools`、`/api/pico/token`）。
-5. **删除以下产品能力**（picoclaw 不暴露给客户端、或与新协议不兼容）：
-   - Agent 管理（picoclaw 把"角色/人格"当作 Skill / 配置，不是 first-class entity）
-   - 任务调度（picoclaw 内部有 cron，但不向客户端暴露管理面）
+1. **删除整个 Rust workspace**：所有 `crates/*`、`apps/clawx-service`、`apps/clawx-cli`、`Cargo.{toml,lock}`、`rust-toolchain.toml`、`clippy.toml`、`rustfmt.toml`、`target/` 全部清除。
+2. **picoclaw 源码 vendor 进本仓库**，目录为 `backend/`：
+   - 来源：`https://github.com/sipeed/picoclaw` 在 commit SHA `8461c996e5ad2f20801622a8eeec931f8966a066`（2026-04-20 main HEAD）。
+   - 方式：直接平铺拷贝（不用 git subtree / submodule），`backend/UPSTREAM.md` 记录 SHA、原始 license（MIT）、手动同步上游变更的方法。
+   - **允许自由修改**：本仓库即为该 picoclaw 副本的事实 fork。当上游协议或行为不满足前端需求时，直接在 `backend/` 内改 Go 代码 + 写 Go 测试，不再上推上游。
+3. **不使用 docker**：本地开发以 `go run ./backend/cmd/picoclaw-launcher` 启动后端，前端 `pnpm dev` 单独跑；通过 Vite proxy 把 `/api/*` 与 `/pico/ws` 转发到后端。Production 单二进制：`go build -o build/picoclaw-launcher ./backend/cmd/picoclaw-launcher` + `pnpm build` 输出的静态资产由 launcher 自己嵌入或 nginx 托管。
+4. **前端从 Tauri 桌面 app 退化为纯 Web 前端**：保留 `apps/clawx-gui/src/` 的对话相关 React 组件；删除 `src-tauri/`、`@tauri-apps/cli`、`tauri` 脚本。
+5. **协议层换血**：弃用自研的 40+ REST 端点 + SSE。前端通过 picoclaw launcher 暴露的：
+   - REST：`/api/pico/token`、`/api/sessions`、`/api/sessions/:id`、`/api/skills`、`/api/tools`
+   - WebSocket：`/pico/ws?session_id=…`，鉴权用 `Sec-WebSocket-Protocol: token.<…>` 子协议
+6. **删除以下产品能力**（picoclaw launcher 不暴露给客户端，或与新协议不兼容）：
+   - Agent 管理（picoclaw 把"角色 / 人格"当作 Skill / 配置）
+   - 任务调度（picoclaw cron 不向客户端暴露管理面）
    - Vault 快照 / 工作区版本化
    - 知识库（KB / Qdrant / Tantivy）
    - 持久化记忆（Long-Term / Short-Term / Working）
    - Tool 审批 UI（Pico WS 协议无 `tool_use` / `approval` 消息类型）
-   - 模型路由 / Provider 管理 UI（picoclaw 通过 `~/.picoclaw/config.json` + `.security.yml` 配置）
+   - 模型路由 / Provider 管理 UI（改由 `~/.picoclaw/config.json` + `.security.yml` 配置）
    - macOS sandbox-exec / Keychain / FSEvents（picoclaw 用 Go 实现自己的安全模型）
 
-**关键权衡:**
+**关键权衡（v2）:**
 
-- **协议失配**：picoclaw 不流式返回 token 增量，只在每条消息完成时下发一条 `message.create`；中间过程通过 `payload.thought:true` 表达。前端需要从"delta accumulator"重写为"message-id merge store"。
-- **审批 UI 必须砍掉**：Pico WebSocket 协议未定义任何 tool-use 或 approval 消息类型，强行实现需要分叉 picoclaw，违背"不维护补丁"的原则。
-- **picoclaw 自述"v1.0 之前不要上生产"**：本次迁移目标不是生产部署，而是把项目重新定位为"picoclaw 的一个外部前端"，演进节奏跟随上游。
-- **跨平台得失**：失去 macOS Tauri 原生壳与 Keychain，但获得跨平台浏览器访问能力。
-- **数据迁移**：本地 SQLite 中的对话/记忆**不迁移**（PRD v0.x 早期阶段，没有真实用户数据）。如有遗留 `~/.clawx/db/clawx.db`，由用户自行归档。
+- **fork 而非外部依赖**：好处是协议、行为、错误格式都由我们控制；前端有任何不满意可以直接改 Go。代价是手动同步上游需要 cherry-pick / 三方合并。在 `backend/UPSTREAM.md` 写明同步流程，并约定 `backend/PATCHES.md` 记录每个本地改动的 rationale，避免日后失忆。
+- **协议失配**：picoclaw 不流式返回 token 增量，只在每条消息完成时下发一条 `message.create`；中间过程通过 `payload.thought:true` 表达。前端从 "delta accumulator" 重写为 "message-id merge store"。如未来需要细粒度流式，可在 `backend/pkg/channels/pico/protocol.go` 自行扩展。
+- **审批 UI**：Pico WS 协议未定义 tool-use / approval 消息类型，因此首版不实现审批 UI。**未来若要恢复**，可以在 `backend/` 内扩 Go 协议 + 在前端 `chat-store` 中加分支处理；本地修改属于已被允许的范围。
+- **不再"跟随上游版本号"**：上游 picoclaw 的版本号失去意义，本仓库的版本号 = ClawX Web 自身的版本号。`backend/UPSTREAM.md` 单独记录上游基线 SHA 与下次同步建议。
+- **跨平台得失**：失去 macOS Tauri 原生壳与 Keychain，获得跨平台浏览器访问能力。
+- **数据迁移**：本地 SQLite 对话 / 记忆**不迁移**（v0.x 早期阶段，无真实用户数据）。
 
 **影响面:**
 
-- `docs/arch/architecture.md` 重写为 v5.0；
-- `docs/arch/api-design.md` 重写为 v5.0；
-- `docs/arch/{autonomy,memory,security,data-model,crate-dependency-graph}.md` 标记为 **DEPRECATED**，仅作历史参考；
-- `docs/prd/*` 与新形态严重不一致，本 ADR 不直接处理 PRD，留给后续单独的 PRD 重写工作；
-- `apps/clawx-gui` 内的 `pages/{Agents,Tasks,Knowledge,Contacts}.tsx`、`components/{Agent*,Task*,Knowledge*,Source*,Artifacts*,AddProvider*,ModelProvider*}.tsx`、`lib/agent-conv-memory.ts` 全部删除；
+- `docs/arch/architecture.md` v5.0（picoclaw vendored 形态）；
+- `docs/arch/api-design.md` v5.0（我们拥有的契约，不是消费上游）；
+- `docs/arch/{autonomy,memory,security,data-model,crate-dependency-graph}.md` 标记为 **DEPRECATED**；
+- `docs/prd/*` 与新形态不一致，本 ADR 不处理 PRD；
+- `apps/clawx-gui` 内 `pages/{Agents,Tasks,Knowledge,Contacts}.tsx`、`components/{Agent*,Task*,Knowledge*,Source*,Artifacts*,AddProvider*,ModelProvider*}.tsx`、`lib/agent-conv-memory.ts` 全部删除；
 - `lib/api.ts`、`lib/types.ts`、`lib/chat-stream-store.ts`、`lib/store.tsx` 全部重写。
 
 **版本号:** 完成迁移后版本跳到 **v0.4**；`v0.3` tag 已存档为 Rust 时代的最后稳定版（同时存在 `release_v0.3` 备份分支）。
