@@ -364,70 +364,237 @@ git commit -m "docs: empirical audit of picoclaw vendor surface"
 
 ---
 
-## Phase 2 — Fill protocol gaps in Go (CONDITIONAL on Phase 1.4 audit)
+## Phase 2 — Required backend patches (from Phase 1.4 audit)
 
-This phase is **conditional**. If Phase 1.4 audit shows zero gaps, skip Phase 2 entirely. If gaps exist, create one task per gap, each:
+The Phase 1.4 audit (`docs/superpowers/plans/2026-04-20-picoclaw-surface-audit.md`, commit `cb39648`) found:
 
-- Following Go's table-driven test pattern
-- Adding the handler in the right `backend/pkg/api/...` file (or wherever the launcher's HTTP routes live — discover from `backend/cmd/picoclaw-launcher/main.go`)
-- Updating `backend/PATCHES.md` with a one-line entry
-- Committing with message `feat(backend): add <endpoint> to launcher (gap from upstream)`
+✅ **Already work:** `/api/pico/info`, `/api/sessions[?offset&limit]`, `/api/skills`, `/api/tools`, `/api/gateway/status`, `/api/models`, `/api/config`.
 
-**Template task** (one per gap):
+❌ **Real gap (frontend blocked without it):** WS auth at `/pico/ws` only accepts `Authorization: Bearer` header; browsers can't set arbitrary headers on `new WebSocket()`. Need to add `Sec-WebSocket-Protocol: token.<dashboardToken>` auth path.
 
-### Task 2.x: Add `<METHOD> <PATH>` to launcher
+🟡 **Nice-to-have (deferred, not blocking):** `GET /api/launcher/health` and `GET /api/launcher/info` returned 404. The frontend can live without these for v0.4; if a need arises, add later.
+
+🟡 **Build-time gap:** `cmd/picoclaw onboard` fails to compile (`go:embed workspace: no matching files found`). Mitigation in Task 2.2.
+
+### Task 2.1: Add `token.<…>` subprotocol auth to `/pico/ws`
 
 **Files:**
-- Modify: `backend/pkg/api/<file>.go` (or new file)
-- Test: `backend/pkg/api/<file>_test.go`
-- Modify: `backend/PATCHES.md`
+- Modify: `backend/web/backend/<…>` — find the WS upgrade handler that currently checks `Authorization` header
+- Modify: `backend/PATCHES.md` — record the patch
+- Test: add a Go test next to the modified handler exercising both auth paths
 
-- [ ] **Step 1: Locate the existing route registration**
+- [ ] **Step 1: Locate the launcher's `/pico/ws` route handler**
 
 ```bash
-grep -RIn "HandleFunc\|router\.\|mux\." backend/cmd/picoclaw-launcher backend/pkg/api 2>/dev/null | head -20
+cd backend
+grep -RIn '"/pico/ws"\|handleWebSocket\|WebSocketHandler\|websocket\.Upgrader' web/backend pkg 2>/dev/null | head -10
 ```
 
-Identify the file where existing `/api/*` routes are wired.
+Find the handler. Read it to understand how it currently validates `Authorization: Bearer`. Note the file path for the test.
 
-- [ ] **Step 2: Write failing test**
+- [ ] **Step 2: Write failing Go test**
 
-Use Go's `httptest.NewServer` + `net/http/httptest`. Table-driven:
+Use `httptest.NewServer` + `gorilla/websocket` (or whatever WS lib upstream uses) to exercise:
 
 ```go
-func TestNewEndpoint(t *testing.T) {
-    tests := []struct {
-        name     string
-        body     string
-        wantCode int
-        wantBody string
+func TestPicoWSAuth(t *testing.T) {
+    server := newTestLauncher(t, "the-token")
+    defer server.Close()
+    wsURL := strings.Replace(server.URL, "http://", "ws://", 1) + "/pico/ws?session_id=t1"
+
+    cases := []struct {
+        name         string
+        headers      http.Header
+        subprotocols []string
+        wantUpgrade  bool
     }{
-        {"happy path", `{...}`, 200, `{...}`},
-        {"bad input", `{}`, 400, `{...}`},
+        {"bearer header succeeds (existing path)", http.Header{"Authorization": []string{"Bearer the-token"}}, nil, true},
+        {"subprotocol token. succeeds (new path)", nil, []string{"token.the-token"}, true},
+        {"missing both fails", nil, nil, false},
+        {"wrong subprotocol token fails", nil, []string{"token.wrong"}, false},
     }
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) { ... })
+    for _, tc := range cases {
+        t.Run(tc.name, func(t *testing.T) {
+            dialer := websocket.Dialer{Subprotocols: tc.subprotocols}
+            conn, resp, err := dialer.Dial(wsURL, tc.headers)
+            if tc.wantUpgrade {
+                if err != nil { t.Fatalf("expected upgrade, got %v (status %d)", err, resp.StatusCode) }
+                conn.Close()
+            } else {
+                if err == nil { conn.Close(); t.Fatal("expected failure, got upgrade") }
+                if resp.StatusCode != 401 { t.Fatalf("want 401, got %d", resp.StatusCode) }
+            }
+        })
     }
 }
 ```
 
-- [ ] **Step 3: Run, watch fail.**
+(Adapt `newTestLauncher` to whatever helper the upstream tests use; if none, write the minimum harness needed.)
+
+- [ ] **Step 3: Run, watch fail (subprotocol case)**
 
 ```bash
-cd backend && go test ./pkg/api/... -run TestNewEndpoint -v
+go test ./web/backend/... -run TestPicoWSAuth -v
 ```
 
-- [ ] **Step 4: Implement minimal handler.**
-- [ ] **Step 5: Run, watch pass.**
+Expected: bearer-header test passes (existing behavior); subprotocol test fails with 401.
+
+- [ ] **Step 4: Implement subprotocol auth**
+
+In the WS handler, before falling through to "missing auth → 401":
+
+```go
+// Accept token via Sec-WebSocket-Protocol subprotocol (browsers can't set
+// arbitrary headers on new WebSocket(); subprotocol is the canonical browser
+// fallback). Format: "token.<dashboardToken>".
+if token == "" {
+    for _, proto := range websocket.Subprotocols(r) {
+        if strings.HasPrefix(proto, "token.") {
+            candidate := strings.TrimPrefix(proto, "token.")
+            if subtle.ConstantTimeCompare([]byte(candidate), []byte(expectedToken)) == 1 {
+                token = candidate
+                // Echo the subprotocol back per RFC 6455 §1.3
+                upgrader.Subprotocols = []string{proto}
+                break
+            }
+        }
+    }
+}
+```
+
+(Adapt variable names to match the actual handler's locals.)
+
+- [ ] **Step 5: Run, watch pass**
+
+```bash
+go test ./web/backend/... -run TestPicoWSAuth -v
+```
+
+Expected: all 4 cases pass.
+
 - [ ] **Step 6: Update `backend/PATCHES.md`**
-- [ ] **Step 7: Commit**
 
-```bash
-git add backend/pkg/api backend/PATCHES.md
-git commit -m "feat(backend): add <METHOD> <PATH> to launcher (gap from upstream)"
+Append:
+
+```markdown
+## 2026-04-20 · Add `Sec-WebSocket-Protocol: token.<…>` auth to `/pico/ws`
+
+**Why:** Browsers' WebSocket API can't set arbitrary HTTP headers on the upgrade request, so the upstream Bearer-only auth path is unreachable from `apps/clawx-gui/`. We added a subprotocol fallback at `<file>:<line>` that constant-time-compares `token.<value>` against the dashboard token. The original Bearer path is unchanged.
+
+**Files:** `backend/web/backend/<…>.go`, `backend/web/backend/<…>_test.go`
+**Local commit:** `<sha>` (run `git log -1 --format=%H` after committing)
+**Upstream PR:** TODO — file when stable
 ```
 
-> **Cap on this phase:** if Phase 1.4 reveals more than 5 gaps, STOP and escalate — at that point the upstream surface diverges enough from the plan that we should re-evaluate (e.g. maybe a different upstream commit has more of these routes already).
+- [ ] **Step 7: Build + commit**
+
+```bash
+make build-launcher   # ensure end-to-end build still works
+git add backend/web/backend backend/PATCHES.md
+git commit -m "feat(backend): accept token.<…> subprotocol on /pico/ws (browser auth)"
+```
+
+---
+
+### Task 2.2: Ship a minimal config bootstrap helper (replaces broken `picoclaw onboard`)
+
+**Files:**
+- Create: `backend/scripts/init-config/main.go`
+
+> **Why:** `cmd/picoclaw onboard` fails to compile from source because `//go:embed workspace` has no matching files (Task 1.3 finding). Rather than fix the embed (which would mean modifying upstream extensively), we ship a tiny Go program that calls `pkg/config.DefaultConfig()` and writes `~/.picoclaw/config.json` with the `pico` channel pre-enabled.
+
+- [ ] **Step 1: Locate `DefaultConfig()` in `pkg/config/`**
+
+```bash
+grep -RIn "func DefaultConfig" backend/pkg/config 2>/dev/null
+```
+
+Read its signature so the helper compiles.
+
+- [ ] **Step 2: Write the helper**
+
+```go
+// backend/scripts/init-config/main.go
+//
+// Generates ~/.picoclaw/config.json with the Pico channel enabled.
+// Replacement for `picoclaw onboard`, which fails to build at SHA 8461c996
+// because the embedded `workspace/` is missing.
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "os"
+    "path/filepath"
+
+    "github.com/sipeed/picoclaw/pkg/config"
+)
+
+func main() {
+    home, err := os.UserHomeDir()
+    if err != nil { fail(err) }
+    dir := filepath.Join(home, ".picoclaw")
+    if err := os.MkdirAll(dir, 0o755); err != nil { fail(err) }
+
+    path := filepath.Join(dir, "config.json")
+    if _, err := os.Stat(path); err == nil {
+        fmt.Println("config exists at", path, "(no changes)")
+        return
+    }
+
+    cfg := config.DefaultConfig()
+    // Enable the Pico channel so the launcher serves /pico/ws (gateway must
+    // also be runnable: see README for LLM provider setup).
+    if cfg.Channels.Pico.Enabled == false {
+        cfg.Channels.Pico.Enabled = true
+    }
+    f, err := os.Create(path)
+    if err != nil { fail(err) }
+    defer f.Close()
+    enc := json.NewEncoder(f)
+    enc.SetIndent("", "  ")
+    if err := enc.Encode(cfg); err != nil { fail(err) }
+    fmt.Println("wrote", path)
+}
+
+func fail(err error) {
+    fmt.Fprintln(os.Stderr, "init-config:", err)
+    os.Exit(1)
+}
+```
+
+If the actual struct path / field names differ from what's above, adapt to match `pkg/config`. The test:
+
+- [ ] **Step 3: Verify it builds**
+
+```bash
+cd backend
+go build ./scripts/init-config/
+./init-config
+ls -la ~/.picoclaw/config.json
+```
+
+Expected: prints "wrote /Users/.../.picoclaw/config.json" or "config exists" (idempotent).
+
+- [ ] **Step 4: Commit**
+
+```bash
+rm -f init-config   # don't commit binary
+git add scripts/init-config backend/PATCHES.md
+git commit -m "feat(backend): scripts/init-config — minimal onboard replacement"
+```
+
+Update `backend/PATCHES.md`:
+
+```markdown
+## 2026-04-20 · Ship `scripts/init-config` to replace broken `picoclaw onboard`
+
+**Why:** `cmd/picoclaw onboard` cannot build from vendored source — `//go:embed workspace` has no matching files. We ship a small Go program that calls `pkg/config.DefaultConfig()` and writes `~/.picoclaw/config.json` with the Pico channel pre-enabled. Idempotent: if config already exists, leaves it alone.
+
+**Files:** `backend/scripts/init-config/main.go`
+**Local commit:** `<sha>`
+**Upstream PR:** none — workaround, not a feature.
+```
 
 ---
 
@@ -667,7 +834,7 @@ git commit -m "feat(gui): pico-types — protocol envelope + payload types"
 ```ts
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
-  fetchPicoToken,
+  fetchPicoInfo,
   listSessions,
   getSession,
   deleteSession,
@@ -692,12 +859,17 @@ function ok(body: unknown) {
 }
 
 describe("pico-rest", () => {
-  it("fetchPicoToken returns token info", async () => {
-    fetchMock.mockResolvedValue(ok({ token: "T", ws_url: "ws://x/pico/ws", enabled: true }));
-    const t = await fetchPicoToken();
-    expect(t.token).toBe("T");
-    expect(t.enabled).toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith("/api/pico/token", expect.any(Object));
+  it("fetchPicoInfo returns connection info (with token from arg)", async () => {
+    fetchMock.mockResolvedValue(ok({ configured: true, ws_url: "ws://x/pico/ws", enabled: true }));
+    const info = await fetchPicoInfo("T");
+    expect(info.configured).toBe(true);
+    expect(info.ws_url).toBe("ws://x/pico/ws");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/pico/info",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer T" }),
+      }),
+    );
   });
 
   it("listSessions passes offset/limit + auth header", async () => {
@@ -743,7 +915,7 @@ describe("pico-rest", () => {
 
   it("throws PicoApiError on non-2xx", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ message: "nope" }), { status: 401 }));
-    await expect(fetchPicoToken()).rejects.toBeInstanceOf(PicoApiError);
+    await expect(fetchPicoInfo("T")).rejects.toBeInstanceOf(PicoApiError);
   });
 });
 ```
@@ -753,10 +925,10 @@ describe("pico-rest", () => {
 - [ ] **Step 3: Implement `pico-rest.ts`** (full code below — copy verbatim, do not abbreviate)
 
 ```ts
-export interface PicoTokenInfo {
-  token: string;
-  ws_url: string;
+export interface PicoInfo {
+  configured: boolean;
   enabled: boolean;
+  ws_url: string;
 }
 
 export interface SessionSummary {
@@ -823,8 +995,8 @@ async function call<T>(
   return (await res.json()) as T;
 }
 
-export function fetchPicoToken(): Promise<PicoTokenInfo> {
-  return call<PicoTokenInfo>("/api/pico/token", {});
+export function fetchPicoInfo(token: string): Promise<PicoInfo> {
+  return call<PicoInfo>("/api/pico/info", { token });
 }
 
 export function listSessions(opts: {
@@ -1250,7 +1422,7 @@ import { renderHook, act } from "@testing-library/react";
 import { ClawProvider, useClaw, type ClawContextValue } from "../store";
 
 vi.mock("../pico-rest", () => ({
-  fetchPicoToken: vi.fn().mockResolvedValue({
+  fetchPicoInfo: vi.fn().mockResolvedValue({
     token: "T",
     ws_url: "ws://localhost:18790/pico/ws",
     enabled: true,
@@ -1280,7 +1452,7 @@ import {
   createContext, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from "react";
-import { fetchPicoToken, type PicoTokenInfo } from "./pico-rest";
+import { fetchPicoInfo, type PicoInfo } from "./pico-rest";
 import { PicoSocket } from "./pico-socket";
 import { ChatStore } from "./chat-store";
 
@@ -1292,7 +1464,7 @@ export interface ClawContextValue {
   chat: ChatStore;
   startNewSession: () => void;
   sendUserMessage: (content: string) => void;
-  refreshToken: () => Promise<PicoTokenInfo>;
+  refreshToken: () => Promise<PicoInfo>;
 }
 
 const Ctx = createContext<ClawContextValue | null>(null);
@@ -1309,7 +1481,7 @@ export function ClawProvider({ children }: { children: ReactNode }) {
   useEffect(() => chatRef.current.subscribe(() => forceRender((n) => n + 1)), []);
 
   const refreshToken = async () => {
-    const info = await fetchPicoToken();
+    const info = await fetchPicoInfo();
     setToken(info.token);
     setWsUrl(info.ws_url);
     setEnabled(info.enabled);
@@ -1424,7 +1596,7 @@ import ChatPage from "../ChatPage";
 import { ClawProvider } from "../../lib/store";
 
 vi.mock("../../lib/pico-rest", () => ({
-  fetchPicoToken: vi.fn().mockResolvedValue({
+  fetchPicoInfo: vi.fn().mockResolvedValue({
     token: "T",
     ws_url: "ws://localhost:18790/pico/ws",
     enabled: true,
@@ -1587,7 +1759,7 @@ const refresh = vi.fn().mockResolvedValue({
   ws_url: "ws://localhost:18790/pico/ws",
   enabled: true,
 });
-vi.mock("../../lib/pico-rest", () => ({ fetchPicoToken: refresh }));
+vi.mock("../../lib/pico-rest", () => ({ fetchPicoInfo: refresh }));
 
 describe("SettingsPage", () => {
   it("renders token + ws_url + enabled, supports refresh", async () => {
@@ -1663,7 +1835,7 @@ import ConnectorsPage from "../ConnectorsPage";
 import { ClawProvider } from "../../lib/store";
 
 vi.mock("../../lib/pico-rest", () => ({
-  fetchPicoToken: vi.fn().mockResolvedValue({ token: "T", ws_url: "ws://x", enabled: true }),
+  fetchPicoInfo: vi.fn().mockResolvedValue({ token: "T", ws_url: "ws://x", enabled: true }),
   listSkills: vi.fn().mockResolvedValue([{ name: "weather" }, { name: "code-runner" }]),
   listTools: vi.fn().mockResolvedValue([
     { name: "web_search", enabled: true },

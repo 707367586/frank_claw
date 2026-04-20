@@ -6,30 +6,37 @@
 
 ---
 
-## 1. 总览
+## 1. 总览（empirically verified at SHA `8461c996`）
 
 | 项 | 值 |
 |---|---|
-| 后端进程 | `picoclaw-launcher`（从本仓库 `backend/cmd/picoclaw-launcher` 编译） |
-| Gateway 监听 | `127.0.0.1:18790`（`gateway.host` / `gateway.port` in `~/.picoclaw/config.json`） |
-| Web Console（上游自带） | `:18800`（默认开。我们**不**用其 UI；可以用 `-webroot` 让 launcher 托管 `apps/clawx-gui/dist/`） |
-| 鉴权根 | Pico Token（首次启动由 launcher 生成，存 `~/.picoclaw/config.json`） |
+| 后端进程 | `picoclaw-launcher`（从本仓库 `backend/web/backend/main.go` 编译） |
+| Launcher 监听 | `127.0.0.1:18800`（`-port` flag, default `18800`）。**唯一 HTTP 入口** |
+| Gateway（子进程） | `127.0.0.1:18790`，仅当 `agents.defaults.model_name` 配好可用 LLM 时由 launcher 自动 fork。**前端永远不直接打 18790**——`/pico/ws` 由 launcher 内部反代到 gateway |
+| 鉴权根 | **Dashboard Token**（每次 launcher 启动时打印到 stdout `dashboardToken: <…>`；可在 config 中固定为 `PICOCLAW_LAUNCHER_TOKEN` env） |
+| 鉴权头 | `Authorization: Bearer <dashboard_token>` —— REST 通用 |
+| WS 鉴权 | **当前 picoclaw 仅支持 Bearer header**；浏览器 WebSocket API 无法设置 header → **必须由本仓库在 `backend/` 内 patch 出 `Sec-WebSocket-Protocol: token.<…>` 子协议支持**（见 Phase 2 / `backend/PATCHES.md`） |
+| Token 发现 | `GET /api/pico/info` → `{configured: bool, enabled: bool, ws_url: "ws://127.0.0.1:18800/pico/ws"}` |
 | 传输 | HTTP/JSON (REST) + WebSocket (chat) |
-| Token 获取 | `GET /api/pico/token` → `{ token, ws_url, enabled }` |
-
-> Phase 1 必须用 `curl` 实测下面所有路径在我们 vendor 的 picoclaw 二进制里真的存在；任何缺口在 `backend/` 内补 Go 实现。
 
 ---
 
 ## 2. 鉴权
 
-1. 前端启动时 `GET /api/pico/token`：
-   - `enabled === false` → 跳到 SettingsPage 提示用户在 `~/.picoclaw/config.json` 把 `channels.pico.enabled = true` 并重启 launcher。
-   - `enabled === true` → 把 `token` 放内存 store。
-2. WebSocket：`new WebSocket(wsUrl + "?session_id=<uuid>", ["token." + token])`
-3. REST：所有 `/api/*` 请求带 `Authorization: Bearer <token>` 头。
+**Bootstrap（首次访问时）**：
 
-> **不要**用 query 传 token（`?token=…`）：picoclaw 仅在 `AllowTokenQuery=true` 时接受，默认关闭，且 query 易出现在日志里。
+1. 用户启动 backend：`go run ./web/backend/ -console -no-browser`，从 stdout 复制 `dashboardToken: <…>`（也可用 env `PICOCLAW_LAUNCHER_TOKEN` 固定）。
+2. 用户在浏览器打开前端，前端 SettingsPage 提示粘贴 token，存入 `localStorage["clawx.dashboard_token"]`。
+3. 此后所有 `/api/*` 请求带 `Authorization: Bearer <token>`。
+4. 前端 `GET /api/pico/info` 拿到 `{configured, enabled, ws_url}`，验证 token 有效；若 `enabled === false`，提示用户编辑 `~/.picoclaw/config.json` 把 `channels.pico.enabled = true` 并重启 launcher。
+
+**WebSocket**：`new WebSocket(ws_url + "?session_id=<uuid>", ["token." + token])`。
+
+> picoclaw 主分支默认仅识别 Bearer header，浏览器 WS API 无法设置 header。本仓库在 `backend/` 内 patch 增加 `Sec-WebSocket-Protocol: token.<…>` 子协议支持（patch 记录见 `backend/PATCHES.md`）。
+
+**REST**：所有 `/api/*` 请求带 `Authorization: Bearer <token>` 头；浏览器 fetch 可直接设置。
+
+> **不要**用 query 传 token（`?token=…`）：易出现在日志里。
 
 ---
 
@@ -94,14 +101,16 @@ interface PicoMessage {
 
 > Phase 1 任务 1.4 必须 `curl` 实测每个端点存在 + 返回符合预期的 JSON。任一缺失，加一个 Phase 2 子任务在 `backend/pkg/api/` 补 Go handler + Go 单测，并在 `backend/PATCHES.md` 记录。
 
-### 4.1 Token
+### 4.1 Pico Info
 
 | Method | Path | Body | Resp |
 |---|---|---|---|
-| GET | `/api/pico/token` | — | `{ token: string, ws_url: string, enabled: boolean }` |
-| POST | `/api/pico/token` | `{ regenerate: true }` | 同上 |
+| GET | `/api/pico/info` | — | `{ configured: boolean, enabled: boolean, ws_url: string }` |
+| POST | `/api/pico/token` | — | rotates dashboard token; **don't call from frontend** |
 
 ### 4.2 Sessions
+
+> Verified to exist at SHA `8461c996`; returned `[]` when probed (no sessions yet, gateway not running). Detailed shape inferred from upstream `web/frontend/src/api/sessions.ts`; Phase 5 must verify shape against real responses once gateway runs.
 
 | Method | Path | Resp |
 |---|---|---|
