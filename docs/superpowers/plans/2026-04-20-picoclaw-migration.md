@@ -162,9 +162,11 @@ The commit will be very large (probably 50–200 MB of tracked files). Don't squ
 
 ---
 
-### Task 1.2: Verify `backend/` builds with `go build`
+### Task 1.2: Verify `backend/` builds with `make build-launcher`
 
 **Files:** none modified (build artifacts only)
+
+> **Discovery from Task 1.1:** the launcher binary is **not** built from `cmd/picoclaw-launcher` (that dir doesn't exist). The actual Go entry point is `backend/web/backend/main.go` (comment in file: "PicoClaw Web Console - Web-based chat and management interface"). It depends on a pre-built frontend bundle in `backend/web/frontend/dist/` which `make build-launcher-frontend` produces via pnpm. The upstream Makefile target `build-launcher` orchestrates both — frontend first, then go build.
 
 - [ ] **Step 1: `go mod download`**
 
@@ -173,35 +175,39 @@ cd backend
 go mod download
 ```
 
-Expected: prints nothing on success. If it fails (e.g. private modules), STOP and report — likely missing GOPROXY env or the upstream depends on internal modules.
+Expected: prints nothing on success. If it fails, STOP — likely Go version mismatch.
 
-- [ ] **Step 2: Build the launcher binary**
-
-```bash
-mkdir -p build
-go build -o build/picoclaw-launcher ./cmd/picoclaw-launcher
-```
-
-Expected: produces `backend/build/picoclaw-launcher`, exits 0. If build fails, capture the FIRST compile error verbatim and STOP — likely a Go version mismatch or a vendored dep with build-tag issues.
-
-- [ ] **Step 3: Verify the binary runs `--help`**
+- [ ] **Step 2: Build the embedded frontend (pnpm)**
 
 ```bash
-./build/picoclaw-launcher --help 2>&1 | head -30
+make build-launcher-frontend
 ```
 
-Expected: prints flags including `-console`, `-public`, `-no-browser`, `-webroot` (per upstream docker-compose example).
+Expected: pnpm installs into `backend/web/frontend/node_modules/`, then builds `backend/web/frontend/dist/`. First run takes minutes. Subsequent runs are cached via the `frontend.installed` stamp file.
 
-If `picoclaw-launcher` doesn't exist as a `cmd/`, fall back to:
+If pnpm isn't installed at the right version, STOP and report.
+
+- [ ] **Step 3: Build the launcher binary**
+
 ```bash
-ls cmd/
-# Find the launcher entry point name; could be cmd/launcher/, cmd/console/, etc.
+make build-launcher
 ```
-and adjust the build path. Update `backend/UPSTREAM.md` if the binary name differs from `picoclaw-launcher`.
 
-- [ ] **Step 4: Commit (only if Makefile / new files were added; otherwise skip)**
+Expected: produces `backend/build/picoclaw-launcher` (a symlink to the platform-specific binary, e.g. `picoclaw-launcher-darwin-arm64`). Exit 0.
 
-If you needed to write a `backend/Makefile` to abstract the build commands, commit it. Otherwise no commit (build artifacts are gitignored).
+If build fails, capture the FIRST compile error verbatim and STOP.
+
+- [ ] **Step 4: Verify the binary runs `--help`**
+
+```bash
+./build/picoclaw-launcher --help 2>&1 | head -40
+```
+
+Expected: prints flags. Per upstream `Dockerfile.goreleaser.launcher`, supported flags include `-console`, `-public`, `-no-browser`, plus a `-webroot` (or similar) for serving custom static assets. Record the actual flag list in your DONE report.
+
+- [ ] **Step 5: Commit (only if you authored a helper script)**
+
+If you wrote `scripts/build.sh` or similar to wrap these commands, commit it. Otherwise no commit (build artifacts are gitignored under `/backend/build/`).
 
 ---
 
@@ -211,20 +217,16 @@ If you needed to write a `backend/Makefile` to abstract the build commands, comm
 
 > **Note:** This task touches the user's home directory. The state at `~/.picoclaw/` is per-developer and not committed.
 
-- [ ] **Step 1: First-run onboarding**
+- [ ] **Step 1: First-run onboarding via the `picoclaw` (gateway) binary**
 
 ```bash
 cd backend
-./build/picoclaw-launcher onboard 2>&1 | tail -10
+go run ./cmd/picoclaw onboard 2>&1 | tail -10
 ```
 
-Expected: prints "First-run setup complete" message and exits 0. Files created: `~/.picoclaw/config.json`, `~/.picoclaw/.security.yml`, `~/.picoclaw/workspace/`.
+(The launcher binary delegates to `picoclaw onboard` internally on first launch — see `cmd/picoclaw-launcher-tui/main.go` for the same pattern. Running it directly is faster.)
 
-If `picoclaw-launcher` doesn't have `onboard` (it's a subcommand of the gateway-only `picoclaw` binary), invoke that instead:
-
-```bash
-go run ./cmd/picoclaw onboard
-```
+Expected: prints "First-run setup complete" and exits 0. Files created: `~/.picoclaw/config.json`, `~/.picoclaw/.security.yml`, `~/.picoclaw/workspace/`.
 
 - [ ] **Step 2: Patch config to enable Pico channel + bind to 0.0.0.0**
 
@@ -1879,10 +1881,11 @@ git commit -m "refactor: routes + nav reduced to chat/connectors/settings"
   "private": true,
   "scripts": {
     "dev": "concurrently -k -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
-    "dev:backend": "cd backend && go run ./cmd/picoclaw-launcher --allow-empty",
+    "dev:backend": "cd backend/web && go run ./backend/ --allow-empty",
+    "dev:backend:setup": "cd backend && make build-launcher-frontend",
     "dev:frontend": "pnpm --filter clawx-gui dev",
     "build": "pnpm build:backend && pnpm build:frontend",
-    "build:backend": "cd backend && mkdir -p build && go build -o build/picoclaw-launcher ./cmd/picoclaw-launcher",
+    "build:backend": "cd backend && make build-launcher",
     "build:frontend": "pnpm --filter clawx-gui build",
     "test": "pnpm test:backend && pnpm test:frontend",
     "test:backend": "cd backend && go test ./...",
