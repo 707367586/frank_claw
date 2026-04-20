@@ -34,7 +34,7 @@ export function ClawProvider({ children }: { children: ReactNode }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const chatRef = useRef(new ChatStore());
   const sockRef = useRef<PicoSocket | null>(null);
-  const [, forceRender] = useState(0);
+  const [chatVersion, forceRender] = useState(0);
 
   useEffect(() => chatRef.current.subscribe(() => forceRender((n) => n + 1)), []);
 
@@ -95,7 +95,9 @@ export function ClawProvider({ children }: { children: ReactNode }) {
       setToken, clearToken,
       startNewSession, sendUserMessage, refreshInfo,
     }),
-    [token, wsUrl, enabled, configured, sessionId],
+    // chatVersion ensures context consumers re-render when messages/typing change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [token, wsUrl, enabled, configured, sessionId, chatVersion],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

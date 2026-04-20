@@ -1,13 +1,22 @@
-import type { Message } from "../lib/types";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-export default function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === "user";
+interface MessageBubbleProps {
+  role: "user" | "assistant";
+  content: string;
+  thought?: boolean;
+}
+
+export default function MessageBubble({ role, content, thought }: MessageBubbleProps) {
+  const isUser = role === "user";
   return (
     <div className={`msg ${isUser ? "msg--user" : "msg--assistant"}`}>
-      <div className="msg__bubble">
-        {isUser ? <span>{message.content}</span> : <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>}
+      {thought && <span className="msg__thought-label">Thinking</span>}
+      <div className={`msg__bubble${thought ? " msg__bubble--thought" : ""}`}>
+        {isUser
+          ? <span>{content}</span>
+          : <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+        }
       </div>
     </div>
   );
