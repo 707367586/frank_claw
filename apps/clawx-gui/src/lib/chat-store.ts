@@ -41,7 +41,7 @@ export class ChatStore {
   applyServer(msg: PicoMessage): void {
     switch (msg.type) {
       case "message.create": {
-        const p = msg.payload as MessageCreatePayload;
+        const p = msg.payload as unknown as MessageCreatePayload;
         this.messages = [
           ...this.messages,
           {
@@ -55,7 +55,7 @@ export class ChatStore {
         break;
       }
       case "message.update": {
-        const p = msg.payload as MessageCreatePayload;
+        const p = msg.payload as unknown as MessageCreatePayload;
         this.messages = this.messages.map((m) =>
           m.id === p.message_id
             ? { ...m, content: p.content, thought: !!p.thought }
@@ -66,7 +66,7 @@ export class ChatStore {
       case "typing.start": this.typing = true; break;
       case "typing.stop": this.typing = false; break;
       case "error": {
-        const p = msg.payload as ErrorPayload;
+        const p = msg.payload as unknown as ErrorPayload;
         this.lastError = p;
         if (p.request_id) {
           this.messages = this.messages.filter((m) => m.requestId !== p.request_id);

@@ -23,7 +23,7 @@ describe("pico-types", () => {
   });
 
   it("rejects unknown server types", () => {
-    expect(isServerMessage({ type: "wat", payload: {} } as PicoMessage)).toBe(false);
+    expect(isServerMessage({ type: "wat", payload: {} } as unknown as PicoMessage)).toBe(false);
   });
 
   it("PicoMessage envelope shape", () => {

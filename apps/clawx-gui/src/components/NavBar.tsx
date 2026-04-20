@@ -1,16 +1,10 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import {
-  MessageSquare, Users, Bot, BookOpen, CalendarClock, Plug, Settings,
-} from "lucide-react";
+import { MessageSquare, Plug, Settings } from "lucide-react";
 import IconButton from "./ui/IconButton";
 import Avatar from "./ui/Avatar";
 
 const navItems = [
   { icon: MessageSquare, label: "对话", path: "/" },
-  { icon: Users,         label: "联系人", path: "/contacts" },
-  { icon: Bot,           label: "Agent & Skill", path: "/agents" },
-  { icon: BookOpen,      label: "知识库", path: "/knowledge" },
-  { icon: CalendarClock, label: "定时任务", path: "/tasks" },
   { icon: Plug,          label: "渠道", path: "/connectors" },
 ];
 
