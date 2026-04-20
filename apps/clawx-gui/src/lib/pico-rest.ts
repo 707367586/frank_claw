@@ -30,10 +30,25 @@ export interface SkillInfo {
   installed?: boolean;
 }
 
+export type ToolStatus = "enabled" | "disabled" | "blocked";
+
 export interface ToolInfo {
   name: string;
-  enabled: boolean;
+  enabled: boolean;          // derived from status === "enabled"
+  status: ToolStatus;        // server-authoritative (handles blocked tools too)
   description?: string;
+  category?: string;
+  config_key?: string;
+  reason_code?: string;      // present when status === "blocked"
+}
+
+interface ToolWireFormat {
+  name: string;
+  status: ToolStatus;
+  description?: string;
+  category?: string;
+  config_key?: string;
+  reason_code?: string;
 }
 
 export class PicoApiError extends Error {
@@ -101,8 +116,14 @@ export async function listSkills(token: string): Promise<SkillInfo[]> {
   return wrap.skills ?? [];
 }
 
-export function listTools(token: string): Promise<ToolInfo[]> {
-  return call<ToolInfo[]>("/api/tools", { token });
+export async function listTools(token: string): Promise<ToolInfo[]> {
+  // Upstream wraps as { tools: [...] } and uses status field, not enabled
+  // (verified in surface audit; see backend/web/backend/api/tools.go).
+  const wrap = await call<{ tools: ToolWireFormat[] }>("/api/tools", { token });
+  return (wrap.tools ?? []).map((t) => ({
+    ...t,
+    enabled: t.status === "enabled",
+  }));
 }
 
 export function setToolEnabled(

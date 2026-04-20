@@ -71,10 +71,32 @@ describe("pico-rest", () => {
     expect(skills).toEqual([{ name: "weather" }]);
   });
 
-  it("listTools returns the array directly", async () => {
-    fetchMock.mockResolvedValue(ok([{ name: "web_search", enabled: true }]));
+  it("listTools unwraps {tools: [...]} and derives enabled from status", async () => {
+    fetchMock.mockResolvedValue(
+      ok({
+        tools: [
+          { name: "web_search", status: "enabled", category: "web", config_key: "web" },
+          { name: "fs_read", status: "disabled" },
+          { name: "experimental", status: "blocked", reason_code: "no_hardware" },
+        ],
+      }),
+    );
     const tools = await listTools("T");
-    expect(tools).toEqual([{ name: "web_search", enabled: true }]);
+    expect(tools).toHaveLength(3);
+    expect(tools[0]).toMatchObject({ name: "web_search", status: "enabled", enabled: true });
+    expect(tools[1]).toMatchObject({ name: "fs_read", status: "disabled", enabled: false });
+    expect(tools[2]).toMatchObject({
+      name: "experimental",
+      status: "blocked",
+      enabled: false,
+      reason_code: "no_hardware",
+    });
+  });
+
+  it("listTools returns [] when wrapper is empty or missing", async () => {
+    fetchMock.mockResolvedValue(ok({}));
+    const tools = await listTools("T");
+    expect(tools).toEqual([]);
   });
 
   it("setToolEnabled sends PUT with body", async () => {

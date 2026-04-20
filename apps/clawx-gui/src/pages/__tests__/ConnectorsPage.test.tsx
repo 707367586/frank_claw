@@ -13,8 +13,8 @@ const mocks = vi.hoisted(() => ({
     { name: "code-runner" },
   ]),
   listTools: vi.fn().mockResolvedValue([
-    { name: "web_search", enabled: true },
-    { name: "fs_read", enabled: false },
+    { name: "web_search", enabled: true, status: "enabled" },
+    { name: "fs_read", enabled: false, status: "disabled" },
   ]),
   setToolEnabled: vi.fn().mockResolvedValue(undefined),
 }));
