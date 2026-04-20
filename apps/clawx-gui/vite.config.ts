@@ -12,5 +12,16 @@ export default defineConfig({
     host: host || false,
     hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
     watch: { ignored: ["**/src-tauri/**"] },
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:18800",
+        changeOrigin: false,
+      },
+      "/pico/ws": {
+        target: "ws://127.0.0.1:18800",
+        ws: true,
+        changeOrigin: false,
+      },
+    },
   },
 });
