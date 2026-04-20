@@ -38,3 +38,9 @@ dist/
 # git worktrees (isolated workspaces)
 .worktrees/
 
+# Go build artifacts
+/backend/build/
+/backend/dist/
+*.test
+*.out
+
