@@ -1,23 +1,18 @@
-# ClawX - macOS Local Claw Agent Platform
+# ClawX - Web Frontend for picoclaw
 
 > This file is the entry point for all AI coding agents (Claude, Cursor, Windsurf, Copilot, etc.)
 
 ## Project Overview
 
-ClawX is a macOS-native local AI agent platform built with **Rust** (core) + **SwiftUI** (GUI).
-All data processing, memory, and knowledge base run locally for maximum privacy and security.
+ClawX is a React web frontend for [picoclaw](https://github.com/sipeed/picoclaw), the open-source personal AI agent runtime. Picoclaw's Go source is **vendored** into `backend/` at a pinned commit; the frontend lives in `apps/clawx-gui/`. All data processing runs locally for maximum privacy and security.
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Core Runtime | Rust (tokio async) |
-| GUI | SwiftUI (macOS native) |
-| Database | SQLite (default) |
-| Vector DB | Qdrant (embedded mode) |
-| Full-text Search | Tantivy (BM25) |
-| Sandbox | Wasmtime (WASM) |
-| Mobile | SwiftUI (iOS) / Jetpack Compose (Android) |
+- **Frontend**: React 19 + Vite 6 + TypeScript 5 (in `apps/clawx-gui/`)
+- **Backend**: vendored [picoclaw](https://github.com/sipeed/picoclaw) Go source under `backend/`. We freely modify it; every local change is recorded in `backend/PATCHES.md`. The pinned upstream SHA lives in `backend/UPSTREAM.md`.
+- **Runtime tooling**: Go ≥ 1.25, Node ≥ 22, pnpm ≥ 10
+- **Test**: Go's `go test` for backend, Vitest 4 + @testing-library/react + jsdom for frontend
+- **Process glue**: `concurrently` at the repo root (`pnpm dev` runs both)
 
 ## Project Structure
 
@@ -26,59 +21,100 @@ frank_claw/
 ├── agents.md              # ← You are here. AI agent entry point.
 ├── workflow.md            # Development workflow (AI must follow this)
 ├── rules/                 # Coding rules & constraints
-│   ├── general.md         # Global rules (security, errors, testing)
-│   ├── rust.md            # Rust-specific rules
-│   └── swift.md           # SwiftUI-specific rules
+│   └── general.md         # Global rules (security, errors, testing)
 ├── docs/
-│   ├── prd/               # Product Requirements Documents
-│   │   └── clawx-v2.0.md # PRD v2.0 — 产品需求文档
 │   └── arch/              # Architecture Design Documents
-│       ├── README.md              # 架构文档索引
-│       ├── architecture.md        # 系统架构总览
-│       ├── api-design.md          # API 设计
-│       ├── data-model.md          # 数据模型
-│       ├── memory-architecture.md # 记忆架构
-│       ├── security-architecture.md # 安全架构
-│       ├── autonomy-architecture.md # 自主性架构
-│       ├── crate-dependency-graph.md # Crate 依赖图
-│       └── decisions.md           # 架构决策记录 (ADR)
-├── src/
-│   ├── core/              # Rust core runtime (workspace crates)
-│   ├── gui/               # SwiftUI macOS GUI
-│   └── mobile/            # iOS / Android apps
-├── tests/                 # Test files
-├── scripts/               # Build / deploy scripts
-└── config/                # Configuration files
+│       ├── README.md              # Architecture doc index
+│       ├── architecture.md        # System architecture overview (v5.0)
+│       ├── api-design.md          # API design
+│       ├── data-model.md          # Data model
+│       ├── memory-architecture.md # Memory architecture
+│       ├── security-architecture.md # Security architecture
+│       ├── autonomy-architecture.md # Autonomy architecture
+│       └── decisions.md           # Architecture Decision Records (ADRs)
+├── apps/
+│   └── clawx-gui/         # React + Vite + TypeScript frontend
+├── backend/               # Vendored picoclaw (Go source)
+│   ├── PATCHES.md         # Local modifications we maintain
+│   └── UPSTREAM.md        # Vendor SHA + sync procedure
+└── package.json           # Root scripts (concurrently dev/build/test)
 ```
 
-## Key Commands
+## Build / test / run
 
-```bash
-cargo build               # Build Rust core
-cargo test                # Run tests
-cargo clippy              # Lint (zero warnings required)
-cargo fmt                 # Format
-```
+| Task | Command |
+|---|---|
+| Run dev (backend + frontend) | `pnpm dev` |
+| Frontend tests | `pnpm test:frontend` |
+| Backend tests | `pnpm test:backend` |
+| All tests | `pnpm test` |
+| Production build | `pnpm build` |
+| One-time: build embedded launcher frontend | `pnpm dev:backend:setup` |
+| One-time: bootstrap `~/.picoclaw/config.json` | `cd backend && go run ./scripts/init-config && cd ..` |
+
+See [`README.md`](./README.md) for the full quick-start.
+
+## Modifying the backend
+
+`backend/` is a vendored copy of upstream picoclaw at the SHA recorded in `backend/UPSTREAM.md`. We **own** this code now — feel free to edit it. But:
+
+1. Every local change MUST be recorded in `backend/PATCHES.md` (one entry per logical patch, with **Why**, **Files**, **Local commit SHA**, and an **Upstream PR** field if you intend to push it back).
+2. Use Go's `go test` against the modified file before committing — `go test ./backend/...` ideally green.
+3. Don't refactor surrounding upstream code beyond what your patch needs. Keep the diff minimal so future upstream syncs are tractable.
+4. To pull updates from upstream, follow the procedure in `backend/UPSTREAM.md` — never `git pull` upstream history into our branch.
+
+If a patch grows large, consider whether it should be filed upstream first.
 
 ## How to Start (Read Order)
 
 ```
 1. agents.md                    → Project overview & tech stack (you are here)
 2. workflow.md                  → Step-by-step dev workflow (MUST follow)
-3. docs/prd/clawx-v2.0.md      → PRD, understand what to build
-4. docs/arch/architecture.md    → 系统架构总览
-5. docs/arch/README.md          → 架构文档索引, 按需深入阅读
-6. rules/                       → Coding constraints for your language
+3. docs/arch/architecture.md    → System architecture overview (v5.0)
+4. docs/arch/README.md          → Architecture doc index, dive deeper as needed
+5. rules/general.md             → Coding constraints
 ```
 
 ## Core Rules (Quick Reference)
 
 - **Local-first**: Never send data externally without user consent
-- **No `unwrap()` in prod**: Use `?` or explicit error handling
 - **Test coverage >= 80%** for core modules
 - **One logical change per commit**: imperative mood, English
-- **Trait-driven design**: All backends behind abstract traits
-- **Security by default**: WASM sandbox, network whitelist, DLP scanning
-- Follow `rustfmt` + `clippy` with zero warnings
-- All public APIs must have `/// doc comments`
-- Full rules in `rules/` directory
+- **Security by default**: network whitelist, DLP scanning
+- All public APIs must have doc comments
+- Full rules in `rules/general.md`
+
+## Collaboration Conventions
+
+### Branch naming
+
+- `feat/<slug>` — new feature
+- `fix/<slug>` — bug fix
+- `refactor/<slug>` — code cleanup without behavior change
+- `docs/<slug>` — documentation only
+- `test/<slug>` — tests only
+
+### Commit messages
+
+```
+feat: add memory hub trait definitions
+fix: handle empty config.json on first run
+docs(agents): switch toolchain refs from Rust → pnpm/go/picoclaw
+```
+
+- Imperative mood, English, concise
+- One logical change per commit
+- Never `git add -A` — stage specific files by name
+
+### PR style
+
+- Keep PRs focused: one feature or fix per PR
+- Include a short summary of **why**, not just **what**
+- Link relevant ADRs from `docs/arch/decisions.md` if the change touches architecture
+- All tests must pass before requesting review
+
+### Code review etiquette
+
+- Assume good intent; ask clarifying questions rather than asserting mistakes
+- Block on correctness and security; suggest (don't block) on style
+- Resolve all open comments before merging
