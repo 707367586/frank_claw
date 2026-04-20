@@ -214,7 +214,48 @@ func validLauncherDashboardAuth(r *http.Request, cfg LauncherDashboardAuthConfig
 			return true
 		}
 	}
+	// Browser fallback: the WebSocket API cannot set arbitrary HTTP headers on
+	// the upgrade request, so we also accept "token.<dashboardToken>" via
+	// Sec-WebSocket-Protocol (RFC 6455 §1.3). Constant-time compare prevents
+	// timing leaks. The original Bearer header path is unchanged.
+	if validLauncherDashboardSubprotocolAuth(r, cfg.Token) {
+		return true
+	}
 	return false
+}
+
+// validLauncherDashboardSubprotocolAuth checks whether any "token.<value>"
+// entry in the Sec-WebSocket-Protocol header matches the expected token using
+// a constant-time comparison.
+func validLauncherDashboardSubprotocolAuth(r *http.Request, expected string) bool {
+	if expected == "" {
+		return false
+	}
+	const tokenPrefix = "token."
+	for _, proto := range parseSubprotocols(r) {
+		if !strings.HasPrefix(proto, tokenPrefix) {
+			continue
+		}
+		candidate := proto[len(tokenPrefix):]
+		if len(candidate) == len(expected) && subtle.ConstantTimeCompare([]byte(candidate), []byte(expected)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// parseSubprotocols returns the list of subprotocols from the
+// Sec-WebSocket-Protocol request header, trimming whitespace from each entry.
+func parseSubprotocols(r *http.Request) []string {
+	var out []string
+	for _, h := range r.Header[http.CanonicalHeaderKey("Sec-Websocket-Protocol")] {
+		for _, proto := range strings.Split(h, ",") {
+			if p := strings.TrimSpace(proto); p != "" {
+				out = append(out, p)
+			}
+		}
+	}
+	return out
 }
 
 func rejectLauncherDashboardAuth(w http.ResponseWriter, r *http.Request, canonicalPath string) {

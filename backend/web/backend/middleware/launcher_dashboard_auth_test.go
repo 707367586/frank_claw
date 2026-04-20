@@ -3,7 +3,11 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 func TestSessionCookieValue_Deterministic(t *testing.T) {
@@ -178,5 +182,95 @@ func TestLauncherDashboardAuth_WebSocketUnauthorizedDoesNotRedirect(t *testing.T
 	}
 	if got := rec.Header().Get("Location"); got != "" {
 		t.Fatalf("Location = %q, want empty", got)
+	}
+}
+
+// wsUpgrader is a permissive upgrader used only in tests.
+var wsUpgrader = websocket.Upgrader{CheckOrigin: func(_ *http.Request) bool { return true }}
+
+// picoWSTestHandler wraps LauncherDashboardAuth around a gorilla WS upgrader,
+// simulating how the launcher serves /pico/ws under auth middleware.
+func picoWSTestHandler(dashboardToken string) http.Handler {
+	cfg := LauncherDashboardAuthConfig{
+		ExpectedCookie: "unused-in-ws-tests",
+		Token:          dashboardToken,
+	}
+	wsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := wsUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		conn.Close()
+	})
+	return LauncherDashboardAuth(cfg, wsHandler)
+}
+
+func wsStatusOf(r *http.Response) int {
+	if r == nil {
+		return 0
+	}
+	return r.StatusCode
+}
+
+func TestPicoWSAuth_Subprotocol(t *testing.T) {
+	const want = "secret-token"
+	srv := httptest.NewServer(picoWSTestHandler(want))
+	defer srv.Close()
+	wsURL := strings.Replace(srv.URL, "http", "ws", 1) + "/pico/ws?session_id=t1"
+
+	cases := []struct {
+		name   string
+		header http.Header
+		protos []string
+		wantOK bool
+	}{
+		{
+			name:   "bearer header preserves existing path",
+			header: http.Header{"Authorization": []string{"Bearer " + want}},
+			protos: nil,
+			wantOK: true,
+		},
+		{
+			name:   "subprotocol token. is the new path",
+			header: nil,
+			protos: []string{"token." + want},
+			wantOK: true,
+		},
+		{
+			name:   "no creds → 401",
+			header: nil,
+			protos: nil,
+			wantOK: false,
+		},
+		{
+			name:   "wrong subprotocol token → 401",
+			header: nil,
+			protos: []string{"token.wrong"},
+			wantOK: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := websocket.Dialer{
+				Subprotocols:     tc.protos,
+				HandshakeTimeout: 2 * time.Second,
+			}
+			conn, resp, err := d.Dial(wsURL, tc.header)
+			if tc.wantOK {
+				if err != nil {
+					t.Fatalf("expected upgrade, got err=%v status=%v", err, wsStatusOf(resp))
+				}
+				conn.Close()
+			} else {
+				if err == nil {
+					conn.Close()
+					t.Fatal("expected failure, got upgrade")
+				}
+				if got := wsStatusOf(resp); got != http.StatusUnauthorized {
+					t.Fatalf("want 401, got %d", got)
+				}
+			}
+		})
 	}
 }
