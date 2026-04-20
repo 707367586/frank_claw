@@ -1,0 +1,20 @@
+{
+  "name": "frank-claw-root",
+  "version": "0.4.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
+    "dev:backend": "cd backend/web && go run ./backend -console -no-browser",
+    "dev:backend:setup": "cd backend && make build-launcher-frontend",
+    "dev:frontend": "pnpm --filter clawx-gui dev",
+    "build": "pnpm build:backend && pnpm build:frontend",
+    "build:backend": "cd backend && make build-launcher",
+    "build:frontend": "pnpm --filter clawx-gui build",
+    "test": "pnpm test:backend && pnpm test:frontend",
+    "test:backend": "cd backend && go test ./...",
+    "test:frontend": "pnpm --filter clawx-gui test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
