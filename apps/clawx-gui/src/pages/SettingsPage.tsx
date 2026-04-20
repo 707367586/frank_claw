@@ -1,121 +1,87 @@
-import { useCallback, useEffect, useState } from "react";
-import { Plus } from "lucide-react";
-import Button from "../components/ui/Button";
-import SettingsNav from "../components/SettingsNav";
-import ModelProviderCard from "../components/ModelProviderCard";
-import AddProviderModal from "../components/AddProviderModal";
-import AgentModelAssignTable from "../components/AgentModelAssignTable";
-import { listModels, deleteModel } from "../lib/api";
-import type { ModelProvider } from "../lib/types";
+import { useState } from "react";
+import { useClaw } from "../lib/store";
 
 export default function SettingsPage() {
-  const [section, setSection] = useState("model");
-  const [providers, setProviders] = useState<ModelProvider[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<ModelProvider | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const claw = useClaw();
+  const [draft, setDraft] = useState("");
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listModels();
-      setProviders(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (section === "model") {
-      refresh();
-    }
-  }, [section, refresh]);
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("确认删除该 Provider？Agent 若正在使用它将无法调用。")) return;
-    setDeletingId(id);
-    try {
-      await deleteModel(id);
-      setProviders((prev) => prev.filter((p) => p.id !== id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
-    } finally {
-      setDeletingId(null);
-    }
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    const t = draft.trim();
+    if (!t) return;
+    claw.setToken(t);
+    setDraft("");
   };
 
   return (
-    <div className="settings-page">
-      <SettingsNav value={section} onChange={setSection} />
-      <section className="settings-page__main">
-        {section === "model" && (
-          <>
-            <header className="settings-page__head">
-              <h2>模型 Provider</h2>
-              <Button
-                leftIcon={<Plus size={14} />}
-                size="sm"
-                onClick={() => setModalOpen(true)}
-              >
-                添加
-              </Button>
-            </header>
+    <div className="p-6 space-y-6 max-w-xl">
+      <h1 className="text-xl font-semibold">Settings</h1>
 
-            {error && <p className="settings-page__placeholder">{error}</p>}
-            {loading && <p className="settings-page__placeholder">加载中…</p>}
-
-            {!loading && providers.length === 0 && (
-              <p className="settings-page__placeholder">
-                还没有配置任何 Provider，点击"添加"填入智谱 API Key 以启用 GLM 模型。
-              </p>
-            )}
-
-            <div className="settings-page__providers">
-              {providers.map((p) => (
-                <ModelProviderCard
-                  key={p.id}
-                  provider={p}
-                  onEdit={(prov) => {
-                    setEditing(prov);
-                    setModalOpen(true);
-                  }}
-                  onDelete={handleDelete}
-                  busy={deletingId === p.id}
-                />
-              ))}
-            </div>
-
-            <h2 className="settings-page__section-title">Agent 模型分配</h2>
-            <AgentModelAssignTable providers={providers} />
-
-            <AddProviderModal
-              open={modalOpen}
-              initial={editing ?? undefined}
-              onClose={() => {
-                setModalOpen(false);
-                setEditing(null);
-              }}
-              onSaved={(p) => {
-                setProviders((prev) => {
-                  const exists = prev.some((x) => x.id === p.id);
-                  return exists
-                    ? prev.map((x) => (x.id === p.id ? p : x))
-                    : [p, ...prev];
-                });
-                setEditing(null);
-              }}
-            />
-          </>
-        )}
-        {section !== "model" && (
-          <div className="settings-page__placeholder">该分组将在后续迭代实现。</div>
-        )}
-      </section>
+      {!claw.token ? (
+        <section>
+          <h2 className="font-medium">Connect to picoclaw</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Start the launcher with <code>pnpm dev</code>, copy the line
+            <code className="mx-1">dashboardToken: …</code> from its stdout, paste it below.
+          </p>
+          <form onSubmit={save} className="mt-3 flex gap-2">
+            <label className="flex-1">
+              <span className="sr-only">Dashboard token</span>
+              <input
+                aria-label="Dashboard token"
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="paste dashboardToken…"
+                className="w-full rounded border px-3 py-2 text-sm font-mono"
+                autoFocus
+              />
+            </label>
+            <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-sm text-white">
+              Save
+            </button>
+          </form>
+        </section>
+      ) : (
+        <section>
+          <h2 className="font-medium">Pico Connection</h2>
+          <dl className="mt-2 grid grid-cols-[140px_1fr] gap-x-4 gap-y-1 text-sm">
+            <dt>Token</dt>
+            <dd className="font-mono break-all">{maskToken(claw.token)}</dd>
+            <dt>WebSocket URL</dt>
+            <dd className="font-mono">{claw.wsUrl ?? "(unknown — refresh)"}</dd>
+            <dt>Configured</dt>
+            <dd>{claw.configured ? "yes" : "no"}</dd>
+            <dt>Enabled</dt>
+            <dd>{claw.enabled ? "yes" : "no"}</dd>
+          </dl>
+          <div className="mt-3 flex gap-2">
+            <button
+              className="rounded bg-neutral-200 px-3 py-1 text-sm"
+              onClick={() => void claw.refreshInfo()}
+            >
+              Refresh
+            </button>
+            <button
+              className="rounded bg-neutral-200 px-3 py-1 text-sm"
+              onClick={() => claw.clearToken()}
+            >
+              Clear token
+            </button>
+          </div>
+          {!claw.enabled && (
+            <p className="mt-3 text-xs text-amber-600">
+              Pico channel is disabled in <code>~/.picoclaw/config.json</code>. Set
+              <code className="mx-1">channels.pico.enabled = true</code> and restart the launcher.
+            </p>
+          )}
+        </section>
+      )}
     </div>
   );
+}
+
+function maskToken(t: string): string {
+  if (t.length <= 8) return t;
+  return t.slice(0, 4) + "…" + t.slice(-4);
 }
