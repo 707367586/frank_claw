@@ -1,10 +1,10 @@
-import type { PicoMessage } from "./pico-types";
+import type { HermesMessage } from "./hermes-types";
 
-export interface PicoSocketOptions {
+export interface HermesSocketOptions {
   wsBase: string;
   sessionId: string;
   token: string;
-  onMessage?: (msg: PicoMessage) => void;
+  onMessage?: (msg: HermesMessage) => void;
   onOpen?: () => void;
   onClose?: (code: number) => void;
   onError?: (err: unknown) => void;
@@ -13,14 +13,14 @@ export interface PicoSocketOptions {
 const RECONNECT_INITIAL_MS = 500;
 const RECONNECT_MAX_MS = 30_000;
 
-export class PicoSocket {
+export class HermesSocket {
   private ws: WebSocket | null = null;
-  private queue: PicoMessage[] = [];
+  private queue: HermesMessage[] = [];
   private reconnectMs = RECONNECT_INITIAL_MS;
   private closedByUser = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly opts: PicoSocketOptions) {}
+  constructor(private readonly opts: HermesSocketOptions) {}
 
   connect(): void {
     this.closedByUser = false;
@@ -36,9 +36,9 @@ export class PicoSocket {
       this.opts.onOpen?.();
     };
     ws.onmessage = (ev) => {
-      let parsed: PicoMessage;
+      let parsed: HermesMessage;
       try {
-        parsed = JSON.parse(typeof ev.data === "string" ? ev.data : "") as PicoMessage;
+        parsed = JSON.parse(typeof ev.data === "string" ? ev.data : "") as HermesMessage;
       } catch {
         return;
       }
@@ -53,8 +53,8 @@ export class PicoSocket {
     };
   }
 
-  send(msg: PicoMessage): void {
-    const enriched: PicoMessage = {
+  send(msg: HermesMessage): void {
+    const enriched: HermesMessage = {
       ...msg,
       id: msg.id ?? crypto.randomUUID(),
       session_id: msg.session_id ?? this.opts.sessionId,
