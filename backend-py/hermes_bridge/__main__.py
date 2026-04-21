@@ -8,7 +8,9 @@ from pathlib import Path
 import uvicorn
 
 from .app import create_app
+from .bridge.hermes_factory import make_real_runner
 from .config import Settings, get_settings
+from .ws import chat as ws_chat
 
 
 def _ensure_token(settings: Settings) -> str:
@@ -48,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"dashboardToken: {token}", flush=True)
 
     app = create_app(settings)
+    ws_chat.bind_runner_factory(lambda session_id: make_real_runner(settings, session_id))
+
     uvicorn.run(app, host=settings.host, port=settings.port, log_level=settings.log_level.lower())
     return 0
 
