@@ -9,10 +9,10 @@ export type ServerMessageType =
   | "error"
   | "pong";
 
-export type PicoMessageType = ClientMessageType | ServerMessageType;
+export type HermesMessageType = ClientMessageType | ServerMessageType;
 
-export interface PicoMessage<P = Record<string, unknown>> {
-  type: PicoMessageType;
+export interface HermesMessage<P = Record<string, unknown>> {
+  type: HermesMessageType;
   id?: string;
   session_id?: string;
   timestamp?: number;
@@ -48,6 +48,6 @@ const SERVER_TYPES = new Set<ServerMessageType>([
   "pong",
 ]);
 
-export function isServerMessage(m: PicoMessage): boolean {
+export function isServerMessage(m: HermesMessage): boolean {
   return SERVER_TYPES.has(m.type as ServerMessageType);
 }
