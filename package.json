@@ -4,14 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "concurrently -k -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
-    "dev:backend": "cd backend/web && go run ./backend -console -no-browser",
-    "dev:backend:setup": "cd backend && make build-launcher-frontend",
+    "dev:backend": "uv run --project backend python -m hermes_bridge",
+    "dev:backend:setup": "cd backend && uv sync && python scripts/init_config.py",
     "dev:frontend": "pnpm --filter clawx-gui dev",
-    "build": "pnpm build:backend && pnpm build:frontend",
-    "build:backend": "cd backend && make build-launcher",
+    "build": "pnpm build:frontend",
     "build:frontend": "pnpm --filter clawx-gui build",
     "test": "pnpm test:backend && pnpm test:frontend",
-    "test:backend": "cd backend && go test ./...",
+    "test:backend": "cd backend && uv run pytest -q",
     "test:frontend": "pnpm --filter clawx-gui test"
   },
   "devDependencies": {
