@@ -1,4 +1,4 @@
-export interface PicoInfo {
+export interface HermesInfo {
   configured: boolean;
   enabled: boolean;
   ws_url: string;
@@ -51,7 +51,7 @@ interface ToolWireFormat {
   reason_code?: string;
 }
 
-export class PicoApiError extends Error {
+export class HermesApiError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message);
   }
@@ -77,14 +77,14 @@ async function call<T>(
     } catch {
       /* ignore */
     }
-    throw new PicoApiError(res.status, msg);
+    throw new HermesApiError(res.status, msg);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
-export function fetchPicoInfo(token: string): Promise<PicoInfo> {
-  return call<PicoInfo>("/api/pico/info", { token });
+export function fetchHermesInfo(token: string): Promise<HermesInfo> {
+  return call<HermesInfo>("/api/hermes/info", { token });
 }
 
 export function listSessions(opts: {
@@ -111,14 +111,11 @@ export function deleteSession(id: string, token: string): Promise<void> {
 }
 
 export async function listSkills(token: string): Promise<SkillInfo[]> {
-  // Upstream wraps the list as { skills: [...] } (verified in surface audit).
   const wrap = await call<{ skills: SkillInfo[] }>("/api/skills", { token });
   return wrap.skills ?? [];
 }
 
 export async function listTools(token: string): Promise<ToolInfo[]> {
-  // Upstream wraps as { tools: [...] } and uses status field, not enabled
-  // (verified in surface audit; see backend/web/backend/api/tools.go).
   const wrap = await call<{ tools: ToolWireFormat[] }>("/api/tools", { token });
   return (wrap.tools ?? []).map((t) => ({
     ...t,
