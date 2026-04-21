@@ -2,8 +2,8 @@ import {
   createContext, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from "react";
-import { fetchPicoInfo, type PicoInfo } from "./pico-rest";
-import { PicoSocket } from "./pico-socket";
+import { fetchHermesInfo, type HermesInfo } from "./hermes-rest";
+import { HermesSocket } from "./hermes-socket";
 import { ChatStore } from "./chat-store";
 
 const TOKEN_KEY = "clawx.dashboard_token";
@@ -19,7 +19,7 @@ export interface ClawContextValue {
   clearToken: () => void;
   startNewSession: () => void;
   sendUserMessage: (content: string) => void;
-  refreshInfo: () => Promise<PicoInfo | null>;
+  refreshInfo: () => Promise<HermesInfo | null>;
 }
 
 const Ctx = createContext<ClawContextValue | null>(null);
@@ -33,18 +33,18 @@ export function ClawProvider({ children }: { children: ReactNode }) {
   const [configured, setConfigured] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const chatRef = useRef(new ChatStore());
-  const sockRef = useRef<PicoSocket | null>(null);
+  const sockRef = useRef<HermesSocket | null>(null);
   const [chatVersion, forceRender] = useState(0);
 
   useEffect(() => chatRef.current.subscribe(() => forceRender((n) => n + 1)), []);
 
-  const refreshInfo = async (): Promise<PicoInfo | null> => {
+  const refreshInfo = async (): Promise<HermesInfo | null> => {
     if (!token) {
       setWsUrl(null); setEnabled(false); setConfigured(false);
       return null;
     }
     try {
-      const info = await fetchPicoInfo(token);
+      const info = await fetchHermesInfo(token);
       setWsUrl(info.ws_url);
       setEnabled(info.enabled);
       setConfigured(info.configured);
@@ -61,7 +61,7 @@ export function ClawProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token || !wsUrl || !sessionId) return;
     sockRef.current?.close();
-    const s = new PicoSocket({
+    const s = new HermesSocket({
       wsBase: wsUrl, sessionId, token,
       onMessage: (m) => chatRef.current.applyServer(m),
     });

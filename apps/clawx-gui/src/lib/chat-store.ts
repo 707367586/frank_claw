@@ -1,8 +1,8 @@
 import type {
   ErrorPayload,
+  HermesMessage,
   MessageCreatePayload,
-  PicoMessage,
-} from "./pico-types";
+} from "./hermes-types";
 
 export interface ChatMessage {
   id: string;
@@ -38,7 +38,7 @@ export class ChatStore {
     return id;
   }
 
-  applyServer(msg: PicoMessage): void {
+  applyServer(msg: HermesMessage): void {
     switch (msg.type) {
       case "message.create": {
         const p = msg.payload as unknown as MessageCreatePayload;

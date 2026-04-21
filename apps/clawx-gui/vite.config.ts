@@ -12,7 +12,7 @@ export default defineConfig({
         target: "http://127.0.0.1:18800",
         changeOrigin: false,
       },
-      "/pico/ws": {
+      "/hermes/ws": {
         target: "ws://127.0.0.1:18800",
         ws: true,
         changeOrigin: false,

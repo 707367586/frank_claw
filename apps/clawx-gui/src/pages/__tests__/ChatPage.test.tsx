@@ -4,11 +4,11 @@ import { MemoryRouter } from "react-router-dom";
 import ChatPage from "../ChatPage";
 import { ClawProvider } from "../../lib/store";
 
-vi.mock("../../lib/pico-rest", () => ({
-  fetchPicoInfo: vi.fn().mockResolvedValue({
+vi.mock("../../lib/hermes-rest", () => ({
+  fetchHermesInfo: vi.fn().mockResolvedValue({
     configured: true,
     enabled: true,
-    ws_url: "ws://localhost:18800/pico/ws",
+    ws_url: "ws://localhost:18800/hermes/ws",
   }),
 }));
 
@@ -65,9 +65,9 @@ describe("ChatPage", () => {
     expect(await screen.findByText("hi back")).toBeInTheDocument();
   });
 
-  it("shows 'Pico channel disabled' when info.enabled is false", async () => {
-    const { fetchPicoInfo } = await import("../../lib/pico-rest");
-    (fetchPicoInfo as unknown as { mockResolvedValue: (v: unknown) => void })
+  it("shows 'Hermes is not configured' when info.enabled is false", async () => {
+    const { fetchHermesInfo } = await import("../../lib/hermes-rest");
+    (fetchHermesInfo as unknown as { mockResolvedValue: (v: unknown) => void })
       .mockResolvedValue({ configured: true, enabled: false, ws_url: "ws://x" });
     render(
       <MemoryRouter>
@@ -77,6 +77,6 @@ describe("ChatPage", () => {
       </MemoryRouter>,
     );
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-    expect(screen.getByText(/Pico channel disabled/i)).toBeInTheDocument();
+    expect(screen.getByText(/Hermes is not configured/i)).toBeInTheDocument();
   });
 });

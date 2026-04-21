@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
-  fetchPicoInfo,
+  fetchHermesInfo,
   listSessions,
   getSession,
   deleteSession,
   listSkills,
   listTools,
   setToolEnabled,
-  PicoApiError,
-} from "../pico-rest";
+  HermesApiError,
+} from "../hermes-rest";
 
 const fetchMock = vi.fn();
 
@@ -24,15 +24,15 @@ function ok(body: unknown) {
   });
 }
 
-describe("pico-rest", () => {
-  it("fetchPicoInfo returns connection info (with token from arg)", async () => {
-    fetchMock.mockResolvedValue(ok({ configured: true, ws_url: "ws://x/pico/ws", enabled: true }));
-    const info = await fetchPicoInfo("T");
+describe("hermes-rest", () => {
+  it("fetchHermesInfo returns connection info (with token from arg)", async () => {
+    fetchMock.mockResolvedValue(ok({ configured: true, ws_url: "ws://x/hermes/ws", enabled: true }));
+    const info = await fetchHermesInfo("T");
     expect(info.configured).toBe(true);
-    expect(info.ws_url).toBe("ws://x/pico/ws");
+    expect(info.ws_url).toBe("ws://x/hermes/ws");
     expect(info.enabled).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/pico/info",
+      "/api/hermes/info",
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer T" }),
       }),
@@ -111,8 +111,8 @@ describe("pico-rest", () => {
     );
   });
 
-  it("throws PicoApiError on non-2xx", async () => {
+  it("throws HermesApiError on non-2xx", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ message: "nope" }), { status: 401 }));
-    await expect(fetchPicoInfo("T")).rejects.toBeInstanceOf(PicoApiError);
+    await expect(fetchHermesInfo("T")).rejects.toBeInstanceOf(HermesApiError);
   });
 });

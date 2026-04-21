@@ -12,7 +12,7 @@ export default function ChatWelcome() {
     <div data-testid="chat-welcome" className="chat-welcome">
       <div className="chat-welcome__hero">
         <div className="chat-welcome__icon"><Sparkles size={30} /></div>
-        <h1 className="chat-welcome__title">PicoClaw</h1>
+        <h1 className="chat-welcome__title">ClawX</h1>
         <p className="chat-welcome__subtitle">Type below to begin chatting.</p>
       </div>
       <ul className="chat-welcome__suggestions">

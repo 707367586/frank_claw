@@ -22,8 +22,10 @@ export default function ChatPage() {
   if (!claw.enabled) {
     return (
       <div className="empty-state">
-        Pico channel disabled. Edit <code>~/.picoclaw/config.json</code>: set
-        <code className="mx-1">channels.pico.enabled = true</code> and restart the launcher.
+        Hermes is not configured. Run the config bootstrap
+        (<code>uv run --project backend python backend/scripts/init_config.py</code>)
+        or edit <code>~/.hermes/config.yaml</code>, then restart
+        <code className="mx-1">hermes_bridge</code>.
       </div>
     );
   }

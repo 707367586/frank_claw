@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { ClawProvider, useClaw, type ClawContextValue } from "../store";
 
-vi.mock("../pico-rest", () => ({
-  fetchPicoInfo: vi.fn().mockResolvedValue({
+vi.mock("../hermes-rest", () => ({
+  fetchHermesInfo: vi.fn().mockResolvedValue({
     configured: true,
     enabled: true,
-    ws_url: "ws://localhost:18800/pico/ws",
+    ws_url: "ws://localhost:18800/hermes/ws",
   }),
 }));
 
@@ -27,16 +27,16 @@ describe("ClawProvider / useClaw", () => {
     expect(v.chat.messages).toEqual([]);
   });
 
-  it("with stored token, fetches PicoInfo and exposes ws_url + enabled", async () => {
+  it("with stored token, fetches HermesInfo and exposes ws_url + enabled", async () => {
     localStorage.setItem("clawx.dashboard_token", "STORED");
     const { result } = renderHook(() => useClaw(), { wrapper: ClawProvider });
     await act(async () => {});
     const v: ClawContextValue = result.current;
     expect(v.token).toBe("STORED");
-    expect(v.wsUrl).toBe("ws://localhost:18800/pico/ws");
+    expect(v.wsUrl).toBe("ws://localhost:18800/hermes/ws");
     expect(v.enabled).toBe(true);
-    const { fetchPicoInfo } = await import("../pico-rest");
-    expect(fetchPicoInfo).toHaveBeenCalledWith("STORED");
+    const { fetchHermesInfo } = await import("../hermes-rest");
+    expect(fetchHermesInfo).toHaveBeenCalledWith("STORED");
   });
 
   it("setToken persists to localStorage and triggers info fetch", async () => {

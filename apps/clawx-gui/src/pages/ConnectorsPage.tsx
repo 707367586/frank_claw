@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   listSkills, listTools, setToolEnabled,
   type SkillInfo, type ToolInfo,
-} from "../lib/pico-rest";
+} from "../lib/hermes-rest";
 import { useClaw } from "../lib/store";
 
 export default function ConnectorsPage() {

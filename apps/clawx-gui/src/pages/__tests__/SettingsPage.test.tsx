@@ -4,18 +4,18 @@ import { MemoryRouter } from "react-router-dom";
 import SettingsPage from "../SettingsPage";
 import { ClawProvider } from "../../lib/store";
 
-const fetchPicoInfo = vi.hoisted(() =>
+const fetchHermesInfo = vi.hoisted(() =>
   vi.fn().mockResolvedValue({
     configured: true,
     enabled: true,
-    ws_url: "ws://localhost:18800/pico/ws",
+    ws_url: "ws://localhost:18800/hermes/ws",
   }),
 );
-vi.mock("../../lib/pico-rest", () => ({ fetchPicoInfo }));
+vi.mock("../../lib/hermes-rest", () => ({ fetchHermesInfo }));
 
 beforeEach(() => {
   localStorage.clear();
-  fetchPicoInfo.mockClear();
+  fetchHermesInfo.mockClear();
 });
 
 describe("SettingsPage", () => {
@@ -40,7 +40,7 @@ describe("SettingsPage", () => {
       await new Promise((r) => setTimeout(r, 0));
     });
     expect(localStorage.getItem("clawx.dashboard_token")).toBe("PASTED");
-    expect(fetchPicoInfo).toHaveBeenCalledWith("PASTED");
+    expect(fetchHermesInfo).toHaveBeenCalledWith("PASTED");
   });
 
   it("with a token, shows ws_url + enabled status + Refresh + Clear", async () => {
@@ -61,11 +61,11 @@ describe("SettingsPage", () => {
       <MemoryRouter><ClawProvider><SettingsPage /></ClawProvider></MemoryRouter>,
     );
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-    fetchPicoInfo.mockClear();
+    fetchHermesInfo.mockClear();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(fetchPicoInfo).toHaveBeenCalledWith("EXISTING");
+    expect(fetchHermesInfo).toHaveBeenCalledWith("EXISTING");
   });
 });

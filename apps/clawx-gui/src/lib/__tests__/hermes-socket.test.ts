@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { PicoSocket } from "../pico-socket";
-import type { PicoMessage } from "../pico-types";
+import { HermesSocket } from "../hermes-socket";
+import type { HermesMessage } from "../hermes-types";
 
 class FakeWS {
   static instances: FakeWS[] = [];
@@ -27,7 +27,7 @@ class FakeWS {
     this.readyState = 1;
     this.onopen?.();
   }
-  emit(msg: PicoMessage) {
+  emit(msg: HermesMessage) {
     this.onmessage?.({ data: JSON.stringify(msg) });
   }
 }
@@ -35,23 +35,23 @@ class FakeWS {
 beforeEach(() => {
   FakeWS.instances = [];
   vi.stubGlobal("WebSocket", FakeWS as unknown as typeof WebSocket);
-  // The PicoSocket implementation uses WebSocket.OPEN constant when checking
+  // The HermesSocket implementation uses WebSocket.OPEN constant when checking
   // readyState; FakeWS doesn't define statics, so polyfill them.
   (FakeWS as unknown as { OPEN: number }).OPEN = 1;
 });
 
-describe("PicoSocket", () => {
+describe("HermesSocket", () => {
   it("connects with token subprotocol and session_id query", () => {
-    const s = new PicoSocket({ wsBase: "ws://h/pico/ws", sessionId: "S1", token: "TKN" });
+    const s = new HermesSocket({ wsBase: "ws://h/hermes/ws", sessionId: "S1", token: "TKN" });
     s.connect();
     const ws = FakeWS.instances[0]!;
-    expect(ws.url).toBe("ws://h/pico/ws?session_id=S1");
+    expect(ws.url).toBe("ws://h/hermes/ws?session_id=S1");
     expect(ws.protocols).toEqual(["token.TKN"]);
   });
 
   it("dispatches parsed server messages to onMessage", () => {
     const onMsg = vi.fn();
-    const s = new PicoSocket({ wsBase: "ws://h/pico/ws", sessionId: "S1", token: "TKN", onMessage: onMsg });
+    const s = new HermesSocket({ wsBase: "ws://h/hermes/ws", sessionId: "S1", token: "TKN", onMessage: onMsg });
     s.connect();
     const ws = FakeWS.instances[0]!;
     ws.open();
@@ -60,7 +60,7 @@ describe("PicoSocket", () => {
   });
 
   it("send wraps client message into envelope JSON", () => {
-    const s = new PicoSocket({ wsBase: "ws://h/pico/ws", sessionId: "S1", token: "TKN" });
+    const s = new HermesSocket({ wsBase: "ws://h/hermes/ws", sessionId: "S1", token: "TKN" });
     s.connect();
     const ws = FakeWS.instances[0]!;
     ws.open();
@@ -74,7 +74,7 @@ describe("PicoSocket", () => {
   });
 
   it("queues sends until socket open, flushes on open", () => {
-    const s = new PicoSocket({ wsBase: "ws://h/pico/ws", sessionId: "S1", token: "TKN" });
+    const s = new HermesSocket({ wsBase: "ws://h/hermes/ws", sessionId: "S1", token: "TKN" });
     s.connect();
     const ws = FakeWS.instances[0]!;
     s.send({ type: "message.send", payload: { content: "queued" } });
@@ -84,7 +84,7 @@ describe("PicoSocket", () => {
   });
 
   it("close stops further reconnects", () => {
-    const s = new PicoSocket({ wsBase: "ws://h/pico/ws", sessionId: "S1", token: "TKN" });
+    const s = new HermesSocket({ wsBase: "ws://h/hermes/ws", sessionId: "S1", token: "TKN" });
     s.connect();
     s.close();
     const ws = FakeWS.instances[0]!;

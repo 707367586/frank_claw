@@ -19,7 +19,7 @@ export default function SettingsPage() {
 
       {!claw.token ? (
         <section>
-          <h2 className="font-medium">Connect to picoclaw</h2>
+          <h2 className="font-medium">Connect to hermes_bridge</h2>
           <p className="mt-1 text-xs text-neutral-500">
             Start the launcher with <code>pnpm dev</code>, copy the line
             <code className="mx-1">dashboardToken: …</code> from its stdout, paste it below.
@@ -44,7 +44,7 @@ export default function SettingsPage() {
         </section>
       ) : (
         <section>
-          <h2 className="font-medium">Pico Connection</h2>
+          <h2 className="font-medium">Hermes Connection</h2>
           <dl className="mt-2 grid grid-cols-[140px_1fr] gap-x-4 gap-y-1 text-sm">
             <dt>Token</dt>
             <dd className="font-mono break-all">{maskToken(claw.token)}</dd>
@@ -71,8 +71,10 @@ export default function SettingsPage() {
           </div>
           {!claw.enabled && (
             <p className="mt-3 text-xs text-amber-600">
-              Pico channel is disabled in <code>~/.picoclaw/config.json</code>. Set
-              <code className="mx-1">channels.pico.enabled = true</code> and restart the launcher.
+              Hermes is not configured. Run
+              <code className="mx-1">uv run --project backend python backend/scripts/init_config.py</code>
+              or edit <code>~/.hermes/config.yaml</code>, then restart
+              <code className="mx-1">hermes_bridge</code>.
             </p>
           )}
         </section>

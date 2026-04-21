@@ -5,7 +5,7 @@ import ConnectorsPage from "../ConnectorsPage";
 import { ClawProvider } from "../../lib/store";
 
 const mocks = vi.hoisted(() => ({
-  fetchPicoInfo: vi.fn().mockResolvedValue({
+  fetchHermesInfo: vi.fn().mockResolvedValue({
     configured: true, enabled: true, ws_url: "ws://x",
   }),
   listSkills: vi.fn().mockResolvedValue([
@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   setToolEnabled: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../lib/pico-rest", () => mocks);
+vi.mock("../../lib/hermes-rest", () => mocks);
 
 beforeEach(() => {
   localStorage.clear();

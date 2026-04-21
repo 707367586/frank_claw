@@ -1,11 +1,11 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import {
   isServerMessage,
-  type PicoMessage,
+  type HermesMessage,
   type ServerMessageType,
-} from "../pico-types";
+} from "../hermes-types";
 
-describe("pico-types", () => {
+describe("hermes-types", () => {
   it("recognises every server-to-client message type", () => {
     const types: ServerMessageType[] = [
       "message.create",
@@ -17,17 +17,17 @@ describe("pico-types", () => {
       "pong",
     ];
     for (const t of types) {
-      const msg: PicoMessage = { type: t, payload: {} };
+      const msg: HermesMessage = { type: t, payload: {} };
       expect(isServerMessage(msg)).toBe(true);
     }
   });
 
   it("rejects unknown server types", () => {
-    expect(isServerMessage({ type: "wat", payload: {} } as unknown as PicoMessage)).toBe(false);
+    expect(isServerMessage({ type: "wat", payload: {} } as unknown as HermesMessage)).toBe(false);
   });
 
-  it("PicoMessage envelope shape", () => {
-    expectTypeOf<PicoMessage>().toHaveProperty("type");
-    expectTypeOf<PicoMessage>().toHaveProperty("payload");
+  it("HermesMessage envelope shape", () => {
+    expectTypeOf<HermesMessage>().toHaveProperty("type");
+    expectTypeOf<HermesMessage>().toHaveProperty("payload");
   });
 });
