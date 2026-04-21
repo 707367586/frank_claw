@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from .api import info as info_api
 from .config import Settings, get_settings
 from .logging_setup import configure_logging
 
@@ -13,4 +14,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def healthz() -> dict[str, bool]:
         return {"ok": True}
 
+    app.include_router(info_api.make_router(s))
     return app
