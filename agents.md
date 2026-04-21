@@ -1,17 +1,17 @@
-# ClawX - Web Frontend for picoclaw
+# ClawX - Web Frontend for hermes-agent
 
 > This file is the entry point for all AI coding agents (Claude, Cursor, Windsurf, Copilot, etc.)
 
 ## Project Overview
 
-ClawX is a React web frontend for [picoclaw](https://github.com/sipeed/picoclaw), the open-source personal AI agent runtime. Picoclaw's Go source is **vendored** into `backend/` at a pinned commit; the frontend lives in `apps/clawx-gui/`. All data processing runs locally for maximum privacy and security.
+ClawX is a React web frontend for [hermes-agent](https://github.com/NousResearch/hermes-agent), the open-source autonomous AI agent framework from Nous Research. hermes-agent is embedded as a Python library inside `backend/hermes_bridge/`, a FastAPI adapter that exposes a REST + WebSocket surface the frontend consumes. All data processing runs locally for maximum privacy and security.
 
 ## Tech Stack
 
 - **Frontend**: React 19 + Vite 6 + TypeScript 5 (in `apps/clawx-gui/`)
-- **Backend**: vendored [picoclaw](https://github.com/sipeed/picoclaw) Go source under `backend/`. We freely modify it; every local change is recorded in `backend/PATCHES.md`. The pinned upstream SHA lives in `backend/UPSTREAM.md`.
-- **Runtime tooling**: Go ≥ 1.25, Node ≥ 22, pnpm ≥ 10
-- **Test**: Go's `go test` for backend, Vitest 4 + @testing-library/react + jsdom for frontend
+- **Backend**: Python ≥ 3.11 FastAPI adapter (`backend/hermes_bridge/`) that imports [hermes-agent](https://github.com/NousResearch/hermes-agent) as a pinned git dependency (SHA recorded in `backend/pyproject.toml`)
+- **Runtime tooling**: Python ≥ 3.11 + `uv`, Node ≥ 22, pnpm ≥ 10
+- **Test**: pytest + pytest-asyncio + httpx for backend, Vitest 4 + @testing-library/react + jsdom for frontend
 - **Process glue**: `concurrently` at the repo root (`pnpm dev` runs both)
 
 ## Project Structure
@@ -21,22 +21,20 @@ frank_claw/
 ├── agents.md              # ← You are here. AI agent entry point.
 ├── workflow.md            # Development workflow (AI must follow this)
 ├── rules/                 # Coding rules & constraints
-│   └── general.md         # Global rules (security, errors, testing)
 ├── docs/
-│   └── arch/              # Architecture Design Documents
+│   └── arch/              # Architecture Design Documents (v6.0 current)
 │       ├── README.md              # Architecture doc index
-│       ├── architecture.md        # System architecture overview (v5.0)
-│       ├── api-design.md          # API design
-│       ├── data-model.md          # Data model
-│       ├── memory-architecture.md # Memory architecture
-│       ├── security-architecture.md # Security architecture
-│       ├── autonomy-architecture.md # Autonomy architecture
-│       └── decisions.md           # Architecture Decision Records (ADRs)
+│       ├── architecture.md        # System architecture overview (v6.0)
+│       ├── api-design.md          # API design (v6.0)
+│       └── decisions.md           # Architecture Decision Records
 ├── apps/
 │   └── clawx-gui/         # React + Vite + TypeScript frontend
-├── backend/               # Vendored picoclaw (Go source)
-│   ├── PATCHES.md         # Local modifications we maintain
-│   └── UPSTREAM.md        # Vendor SHA + sync procedure
+├── backend/               # Python FastAPI adapter embedding hermes-agent
+│   ├── hermes_bridge/     # Adapter package (api/, ws/, bridge/)
+│   ├── scripts/init_config.py
+│   ├── tests/             # pytest suite
+│   ├── pyproject.toml
+│   └── uv.lock
 └── package.json           # Root scripts (concurrently dev/build/test)
 ```
 
@@ -49,28 +47,25 @@ frank_claw/
 | Backend tests | `pnpm test:backend` |
 | All tests | `pnpm test` |
 | Production build | `pnpm build` |
-| One-time: build embedded launcher frontend | `pnpm dev:backend:setup` |
-| One-time: bootstrap `~/.picoclaw/config.json` | `cd backend && go run ./scripts/init-config && cd ..` |
+| One-time: install deps + bootstrap `~/.hermes/` | `pnpm dev:backend:setup` |
 
 See [`README.md`](./README.md) for the full quick-start.
 
 ## Modifying the backend
 
-`backend/` is a vendored copy of upstream picoclaw at the SHA recorded in `backend/UPSTREAM.md`. We **own** this code now — feel free to edit it. But:
+`backend/` is **our own** Python FastAPI glue code that embeds `hermes-agent` as a library. Two parts:
 
-1. Every local change MUST be recorded in `backend/PATCHES.md` (one entry per logical patch, with **Why**, **Files**, **Local commit SHA**, and an **Upstream PR** field if you intend to push it back).
-2. Use Go's `go test` against the modified file before committing — `go test ./backend/...` ideally green.
-3. Don't refactor surrounding upstream code beyond what your patch needs. Keep the diff minimal so future upstream syncs are tractable.
-4. To pull updates from upstream, follow the procedure in `backend/UPSTREAM.md` — never `git pull` upstream history into our branch.
+1. **Files we own freely** (`backend/hermes_bridge/**`): edit normally — this is original code with a thorough pytest suite.
+2. **The hermes-agent upstream interface** (`backend/hermes_bridge/bridge/hermes_factory.py` is the only file that imports hermes-agent internals). When upstream moves the pinned SHA in `backend/pyproject.toml`, that file absorbs any symbol renames. Keep the brittleness localised there.
 
-If a patch grows large, consider whether it should be filed upstream first.
+The hermes-agent internal surface we depend on is documented in `backend/docs/hermes-internal-surface.md`. Update that doc whenever the SHA moves.
 
 ## How to Start (Read Order)
 
 ```
 1. agents.md                    → Project overview & tech stack (you are here)
 2. workflow.md                  → Step-by-step dev workflow (MUST follow)
-3. docs/arch/architecture.md    → System architecture overview (v5.0)
+3. docs/arch/architecture.md    → System architecture overview (v6.0)
 4. docs/arch/README.md          → Architecture doc index, dive deeper as needed
 5. rules/general.md             → Coding constraints
 ```
@@ -97,9 +92,9 @@ If a patch grows large, consider whether it should be filed upstream first.
 ### Commit messages
 
 ```
-feat: add memory hub trait definitions
-fix: handle empty config.json on first run
-docs(agents): switch toolchain refs from Rust → pnpm/go/picoclaw
+feat: add skill install endpoint
+fix: handle empty config.yaml on first run
+docs(agents): switch toolchain refs to uv/Python/hermes-agent
 ```
 
 - Imperative mood, English, concise
