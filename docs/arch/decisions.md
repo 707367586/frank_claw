@@ -188,8 +188,6 @@
 
 **理由:** 三层概念架构与人类记忆工作方式类比，提取和晋升机制更自然。Working Memory 实现归 Runtime 可减少概念混淆。
 
-**详见:** [memory-architecture.md](./memory-architecture.md)
-
 ---
 
 ## ADR-024: 记忆提取采用 LLM 辅助
@@ -225,8 +223,6 @@
 **决策:** 自主性引擎 (ReAct, Planner, Reflection 等) 作为 `clawx-runtime` 的子模块实现，而非独立 Crate。
 
 **理由:** 自主性引擎是运行时编排的核心部分，与 Runtime 紧密耦合；独立 Crate 会引入大量跨模块调用开销；通过子模块保持代码组织清晰度。
-
-**详见:** [autonomy-architecture.md](./autonomy-architecture.md)
 
 ---
 

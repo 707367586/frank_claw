@@ -202,10 +202,4 @@ hermes-agent 以 **固定 git ref** 的方式在 `backend/pyproject.toml` 中引
 
 ## 9. 历史文档
 
-- v5.0 `architecture.md`（本次被覆盖）— 见 git history
-- v4.2 Rust-era 文档（均为 DEPRECATED）：
-  - [autonomy-architecture.md](./autonomy-architecture.md)
-  - [memory-architecture.md](./memory-architecture.md)
-  - [security-architecture.md](./security-architecture.md)
-  - [data-model.md](./data-model.md)
-  - [crate-dependency-graph.md](./crate-dependency-graph.md)
+v4.2 Rust-era 和 v5.0 picoclaw-era 的详细架构文档已清理；如需追溯见 git history。

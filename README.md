@@ -81,8 +81,6 @@ The backend serves both the API and the static frontend.
 - [`docs/arch/decisions.md`](./docs/arch/decisions.md) — full ADR log; ADR-038 is the migration decision
 - [`docs/superpowers/plans/2026-04-21-hermes-agent-migration.md`](./docs/superpowers/plans/2026-04-21-hermes-agent-migration.md) — this migration plan
 
-`docs/arch/{autonomy,memory,security,data-model,crate-dependency-graph}-architecture.md` are **DEPRECATED** historical references.
-
 ## License
 
 Frontend code in `apps/clawx-gui/` retains its original license. `backend/` is our original FastAPI glue under the same license; `hermes-agent` (Python dep) is MIT.
