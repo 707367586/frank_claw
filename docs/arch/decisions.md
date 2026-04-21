@@ -407,3 +407,29 @@ ClawX 自研 Rust 后端在 v0.3 完成了"agentic tool-use loop Phase 1"（ADR-
 - Phase 2 计划（hook / SubTurn / steering / MCP 客户端 / markdown skills / GUI 审批对话框 / streaming + tool_use）全部可以构建在这套 surface 之上，不需要回头动 provider 或 content block。
 
 **验证:** 整套 `cargo test --workspace` 绿；新增 E2E 测试 `agent_creates_folder_via_tool_use` 用 scripted LLM 在临时 workspace 里实际创建了目录；`shell_blocks_write_outside_workspace` 用真 `sandbox-exec` 拦住了 `$HOME` 写入。
+
+---
+
+## ADR-038: 2026-04-21 — 后端从 vendored picoclaw 切换到 hermes-agent
+
+**决策:** 删除 `backend/` 下 vendored 的 Go picoclaw；引入 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 作为后端 agent 内核，并通过一个 Python FastAPI 适配层 `hermes_bridge` 对前端继续暴露 v5.0 已定义的 Pico 契约（路径改名 `/api/pico/*` → `/api/hermes/*`，`/pico/ws` → `/hermes/ws`；消息帧格式不变）。
+
+**理由:**
+1. hermes-agent 的能力矩阵（skills 自生成、FTS5 session 搜索、40+ 内置工具、MCP、Nous Portal/OpenRouter/OpenAI/Anthropic/Ollama/… 模型无缝切换）已超出 picoclaw 的当前提供面，而且其发展节奏更可预期。
+2. picoclaw 的 WS 鉴权需要我们在上游之上持续维护本地 patch（`Sec-WebSocket-Protocol: token.<…>`），而 `hermes_bridge` 作为我们自有进程可直接原生支持，不再需要 patch 管理。
+3. 前端 `chat-store.ts` + `PicoSocket` + `Pico*` 类型已经围绕这套 wire 协议稳定下来，保留契约意味着前端只改文件名和 import，不改 runtime 行为。
+4. hermes-agent 以 Python 为主，`hermes_bridge` 选 FastAPI 可以同时满足：最小化 Python 依赖、原生 WS 支持、TestClient 可驱动的强可测性、与 hermes-agent 相同的 `uv` 工具链。
+
+**不采取的替代方案:**
+- **直接在 hermes-agent fork 内新增 HTTP/WS 服务**: 上游合并路径不明，维护本地 fork 负担大。
+- **在浏览器直连 hermes TUI 的 PTY**: 放弃 Pico 协议结构化帧的全部好处，合并/重连/thought 气泡等需要重写。
+- **保留 picoclaw 再并跑**: 双后端、双鉴权、双配置，收益小于复杂度。
+
+**影响:**
+- 删除整个 `backend/` Go 树 + `Cargo.lock` + `target/`。
+- 新增 `backend/` Python 项目（`pyproject.toml` + `hermes_bridge/`）。
+- 前端 `pico-*` 文件 & 符号更名为 `hermes-*`；wire 格式与 store 行为不变。
+- 根 `package.json` 的 dev 脚本从 `go run` 改为 `uv run python -m hermes_bridge`。
+- 先前在 ADR-037 v2 中的"vendor picoclaw 源码"策略随本决策作废。
+
+**迁移计划:** `docs/superpowers/plans/2026-04-21-hermes-agent-migration.md`
