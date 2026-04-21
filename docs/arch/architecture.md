@@ -1,8 +1,8 @@
 # ClawX Architecture v5.0
 
-**日期:** 2026-04-20 | **对应 ADR:** [ADR-037 (v2)](./decisions.md#adr-037-2026-04-20-删除-rust-后端将-picoclaw-源码-vendor-进本仓库作为新后端) | **取代:** v4.2
+**日期:** 2026-04-21 
 
-> **重大变更**：自 v5.0 起，ClawX 不再持有自研 Rust 后端。后端来自 [sipeed/picoclaw](https://github.com/sipeed/picoclaw) 主分支源码，**vendor 进本仓库的 `backend/` 目录**，由我们自由维护、可自由修改。前端 `apps/clawx-gui/` 是它的纯 Web 客户端。
+> ClawX 当前由 vendored 的 [sipeed/picoclaw](https://github.com/sipeed/picoclaw) Go 后端与 `apps/clawx-gui/` 中的 React Web 前端组成。本文只描述当前仍然存在的架构与能力边界，不再保留迁移过程中的删改清单。
 
 ---
 
@@ -62,7 +62,7 @@ frank_claw/
 │       │   │   ├── pico-types.ts  # 协议类型
 │       │   │   └── store.tsx      # React context
 │       │   └── ...
-│       ├── package.json        # 已移除 @tauri-apps/cli
+│       ├── package.json
 │       └── vite.config.ts      # port 1420; proxy /api/*, /pico/ws → :18800
 ├── backend/                    # picoclaw 源码 vendor
 │   ├── cmd/
@@ -82,16 +82,12 @@ frank_claw/
 │   └── PATCHES.md              # 记录我们对上游做过的所有本地改动
 ├── docs/
 │   ├── arch/                   # v5.0 文档
-│   ├── prd/                    # 待重写（DEPRECATED）
+│   ├── prd/                    # 
 │   └── superpowers/plans/2026-04-20-picoclaw-migration.md
 ├── package.json                # 根 workspace（可选 concurrently 跑前后端）
 ├── README.md
 └── AGENTS.md
 ```
-
-**已移除（migration 完成后）**：`crates/`、`apps/clawx-service/`、`apps/clawx-cli/`、`apps/clawx-gui/src-tauri/`、`Cargo.{toml,lock}`、`rust-toolchain.toml`、`clippy.toml`、`rustfmt.toml`、`target/`。
-
-**已撤回（迁移过程中曾尝试，已废弃）**：`docker-compose.yml`、`Dockerfile` —— 不再用 docker。
 
 ---
 
@@ -128,19 +124,15 @@ frank_claw/
 
 ---
 
-## 4. 不再支持的能力（与 v4.2 对照）
+## 4. 当前前端职责边界
 
-| v4.2 能力 | v5.0 处置 |
+| 区域 | 当前能力 |
 |---|---|
-| Agent 管理（创建/克隆/模型分配） | 删除 |
-| 持久化记忆（Long/Short/Working） | 删除 |
-| 知识库（FSEvents/Qdrant/Tantivy） | 删除 |
-| Vault 快照 / 工作区回滚 | 删除 |
-| 任务（Task/Trigger/Run） | 删除 |
-| Tool 审批 UI（ADR-036） | 暂停。Pico WS 协议无对应消息类型；如未来要恢复，在 `backend/pkg/channels/pico/` 自行扩协议 |
-| Provider / 模型路由 UI | 删除。改由 `~/.picoclaw/config.json` + `.security.yml` 配置 |
-| Channels（Telegram / Lark / …） | 由 picoclaw 直接承担，前端不暴露管理面 |
-| macOS Keychain / FSEvents / sandbox-exec | 删除 |
+| ChatPage | 基于 Pico WebSocket 建立会话、发送消息、接收 `message.create` / `message.update`、显示 typing / thought 状态 |
+| ConnectorsPage | 列出已安装 skills、列出 tools、切换 tool 启停状态 |
+| SettingsPage | 粘贴 / 清除 dashboard token、刷新 Pico 连接信息、展示 `configured` / `enabled` / `ws_url` |
+| 本地配置 | provider、channel、安全配置由 picoclaw 本地文件负责，主要是 `~/.picoclaw/config.json` 与 `~/.picoclaw/.security.yml` |
+| 非前端管理面 | 其他 channels、MCP、hooks、cron、skills registry 等能力由 `backend/` 内的 picoclaw 进程直接承担，当前前端不额外封装独立管理界面 |
 
 ---
 
@@ -180,16 +172,14 @@ launcher 同时托管前端静态资产 + 后端 API。无需 docker，无需 ng
 
 | 层 | 技术 | 备注 |
 |---|---|---|
-| 前端 UI | React 19 + TypeScript 5 | 沿用 |
-| 前端构建 | Vite 6 | 沿用 |
-| 路由 | react-router-dom 7 | 沿用 |
-| Markdown | react-markdown + remark-gfm + highlight.js | 沿用 |
-| 前端测试 | vitest 4 + @testing-library/react + jsdom | 沿用 |
-| 后端语言 | Go ≥ 1.25 | **新增** |
-| 后端测试 | `go test ./...`（picoclaw 自带 Go test 基线） | **新增** |
-| 进程管理 | concurrently（dev）；裸二进制（prod） | 不用 systemd / launchd / docker |
-
-**已移除**：Rust toolchain、cargo、所有 `clawx-*` crate、`@tauri-apps/cli`、Tauri Rust 桥接、docker / docker-compose。
+| 前端 UI | React 19 + TypeScript 5 | `apps/clawx-gui/` 主体实现 |
+| 前端构建 | Vite 6 | dev server 监听 `1420`，代理 `/api` 与 `/pico/ws` |
+| 路由 | react-router-dom 7 | `ChatPage` / `ConnectorsPage` / `SettingsPage` |
+| Markdown | react-markdown + remark-gfm + highlight.js | 消息渲染 |
+| 前端测试 | vitest 4 + @testing-library/react + jsdom | 组件与协议适配测试 |
+| 后端语言 | Go ≥ 1.25 | vendored picoclaw |
+| 后端测试 | `go test ./...` | 以后端仓库自带 Go tests 为基线 |
+| 进程管理 | concurrently（dev）；裸二进制（prod） | 本地单机运行，无额外反向代理要求 |
 
 ---
 
