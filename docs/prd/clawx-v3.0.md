@@ -1,9 +1,34 @@
 # Agent Social Network 产品需求文档 (PRD)
 
 **产品名称:** ClawX (Agent Social Network)
-**版本:** 3.0
+**版本:** 3.0（愿景 PRD）
 **日期:** 2026年3月30日
 **作者:** Frank
+
+> **文档类型：产品愿景 / 路线图**，不是当前实现的镜像。本 PRD 描述 ClawX 作为"Agent 社交网络"的完整产品形态（22 个功能模块，v0.1–v1.0+）。当前架构基线 **v6.0** 只兑现了其中与本地对话最相关的一小部分；其余内容属于未来交付路线，读者遇到与代码不一致的描述时以 `docs/arch/architecture.md` 与 `docs/arch/decisions.md`（ADR-038）为准。
+
+## 0. v6.0 实施状态速览
+
+| 模块 | 本 PRD 章节 | 当前 v6.0 基线 | 备注 |
+|---|---|---|---|
+| Agent 工作台 | §2.1 | 部分 — 单会话聊天页，无 Agent CRUD、无模板库 | `apps/clawx-gui/src/pages/ChatPage.tsx` |
+| 数据保险箱 | §2.2 | 未实现 | hermes-agent 无工作区概念 |
+| 记忆中心 | §2.3 | 部分 — 会话记忆由 hermes 的 `state.db` 承担；无独立的双层用户/Agent 记忆 UI | `hermes_state.SessionDB` |
+| 知识库引擎 | §2.4 | 未实现 | 可走 hermes 内置能力 + MCP，但未在前端暴露 |
+| 安全执行官 | §2.5 | 部分 — 仅 Dashboard Token + loopback；无 T1/T2/T3 沙箱、无 DLP | `backend/hermes_bridge/auth.py` |
+| IM 渠道管理 | §2.6 | 未实现（前端只读 `/api/tools`） | hermes 侧有 Telegram/Discord/... 支持但未桥接 |
+| Skills 生态 | §2.7 | 部分 — 只读列出 `~/.hermes/skills/`；install 返回 501；无商店 | `backend/hermes_bridge/api/skills.py` |
+| 主动式 Agent | §2.8 | 未实现 | |
+| 文件产物管理 | §2.9 | 未实现 | |
+| 模型 / API 管理 | §2.10 | 未实现 GUI — 由 `~/.hermes/config.yaml` + `.env` 承担 | |
+| Agent 身份 / 通讯录 | §2.11 | 未实现 | ADR-039 规划 |
+| 远程对话 / Relay | §2.12 | 未实现 | ADR-039 规划 |
+| Agent 广场 | §2.13 | 未实现 | |
+| 群聊与 Agent 协作 | §2.14 | 未实现 | |
+| Agent 收费 / 支付 | §2.15 | 未实现 | |
+| 云端备份 | §2.16+ | 未实现 | |
+
+技术栈对照：PRD 提及的 Rust crate、WASM 沙箱、Tauri、SwiftUI、`~/.clawx/`、macOS FSEvents/Keychain 等**均已随 ADR-037 / ADR-038 退役**。当前栈是 Python FastAPI（`backend/hermes_bridge/`）+ React/Vite（`apps/clawx-gui/`），配置落在 `~/.hermes/`。
 
 ---
 
