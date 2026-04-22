@@ -19,8 +19,11 @@ class InfoResponse(BaseModel):
     missing_env_var: str | None = None
 
 
-# Known providers. Must match keys in hermes-agent's provider registry
-# (hermes_cli/providers.py). Keep in sync with scripts/init_config.PROVIDERS.
+# Known providers. Keys must match hermes-agent's provider registry
+# (hermes_cli/providers.py). The first tuple element is the canonical env var
+# that scripts/init_config.PROVIDERS writes for this provider; additional
+# entries are aliases that check_configured also accepts (e.g. pre-existing
+# ZAI_API_KEY / Z_AI_API_KEY from legacy Zhipu SDK setups).
 _PROVIDER_ENV_VARS: dict[str, tuple[str, ...]] = {
     "zai": ("GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"),
     "anthropic": ("ANTHROPIC_API_KEY",),
