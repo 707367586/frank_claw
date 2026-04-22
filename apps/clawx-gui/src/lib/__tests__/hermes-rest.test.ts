@@ -26,7 +26,7 @@ function ok(body: unknown) {
 
 describe("hermes-rest", () => {
   it("fetchHermesInfo returns connection info (with token from arg)", async () => {
-    fetchMock.mockResolvedValue(ok({ configured: true, ws_url: "ws://x/hermes/ws", enabled: true }));
+    fetchMock.mockResolvedValue(ok({ configured: true, ws_url: "ws://x/hermes/ws", enabled: true, provider: null, missing_env_var: null }));
     const info = await fetchHermesInfo("T");
     expect(info.configured).toBe(true);
     expect(info.ws_url).toBe("ws://x/hermes/ws");

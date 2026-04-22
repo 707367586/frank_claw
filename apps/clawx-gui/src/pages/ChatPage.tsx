@@ -20,12 +20,21 @@ export default function ChatPage() {
   }
 
   if (!claw.enabled) {
+    if (claw.missingEnvVar) {
+      return (
+        <div className="empty-state">
+          Hermes is not ready: <code>{claw.missingEnvVar}</code> is not set.
+          Add it to <code>~/.hermes/.env</code> (one line, e.g.
+          <code className="mx-1">{claw.missingEnvVar}=...</code>)
+          and restart the backend.
+        </div>
+      );
+    }
     return (
       <div className="empty-state">
-        Hermes is not configured. Run the config bootstrap
+        Hermes is not configured. Run the bootstrap
         (<code>uv run --project backend python backend/scripts/init_config.py</code>)
-        or edit <code>~/.hermes/config.yaml</code>, then restart
-        <code className="mx-1">hermes_bridge</code>.
+        and restart <code className="mx-1">hermes_bridge</code>.
       </div>
     );
   }

@@ -9,6 +9,8 @@ vi.mock("../../lib/hermes-rest", () => ({
     configured: true,
     enabled: true,
     ws_url: "ws://localhost:18800/hermes/ws",
+    provider: null,
+    missing_env_var: null,
   }),
 }));
 
@@ -68,7 +70,13 @@ describe("ChatPage", () => {
   it("shows 'Hermes is not configured' when info.enabled is false", async () => {
     const { fetchHermesInfo } = await import("../../lib/hermes-rest");
     (fetchHermesInfo as unknown as { mockResolvedValue: (v: unknown) => void })
-      .mockResolvedValue({ configured: true, enabled: false, ws_url: "ws://x" });
+      .mockResolvedValue({
+        configured: true,
+        enabled: false,
+        ws_url: "ws://x",
+        provider: null,
+        missing_env_var: null,
+      });
     render(
       <MemoryRouter>
         <ClawProvider>
@@ -78,5 +86,48 @@ describe("ChatPage", () => {
     );
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(screen.getByText(/Hermes is not configured/i)).toBeInTheDocument();
+  });
+
+  it("shows missing env var when backend reports one", async () => {
+    const { fetchHermesInfo } = await import("../../lib/hermes-rest");
+    (fetchHermesInfo as unknown as { mockResolvedValue: (v: unknown) => void })
+      .mockResolvedValue({
+        configured: false,
+        enabled: false,
+        ws_url: "ws://x",
+        provider: "zai",
+        missing_env_var: "GLM_API_KEY",
+      });
+    render(
+      <MemoryRouter>
+        <ClawProvider>
+          <ChatPage />
+        </ClawProvider>
+      </MemoryRouter>,
+    );
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(screen.getAllByText(/GLM_API_KEY/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/~\/\.hermes\/\.env/)).toBeInTheDocument();
+  });
+
+  it("falls back to generic message when no hint available", async () => {
+    const { fetchHermesInfo } = await import("../../lib/hermes-rest");
+    (fetchHermesInfo as unknown as { mockResolvedValue: (v: unknown) => void })
+      .mockResolvedValue({
+        configured: false,
+        enabled: false,
+        ws_url: "ws://x",
+        provider: null,
+        missing_env_var: null,
+      });
+    render(
+      <MemoryRouter>
+        <ClawProvider>
+          <ChatPage />
+        </ClawProvider>
+      </MemoryRouter>,
+    );
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(screen.getByText(/init_config\.py/)).toBeInTheDocument();
   });
 });

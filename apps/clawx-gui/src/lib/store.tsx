@@ -13,6 +13,8 @@ export interface ClawContextValue {
   wsUrl: string | null;
   enabled: boolean;
   configured: boolean;
+  provider: string | null;
+  missingEnvVar: string | null;
   sessionId: string | null;
   chat: ChatStore;
   setToken: (token: string) => void;
@@ -31,6 +33,8 @@ export function ClawProvider({ children }: { children: ReactNode }) {
   const [wsUrl, setWsUrl] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [configured, setConfigured] = useState(false);
+  const [provider, setProvider] = useState<string | null>(null);
+  const [missingEnvVar, setMissingEnvVar] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const chatRef = useRef(new ChatStore());
   const sockRef = useRef<HermesSocket | null>(null);
@@ -41,6 +45,7 @@ export function ClawProvider({ children }: { children: ReactNode }) {
   const refreshInfo = async (): Promise<HermesInfo | null> => {
     if (!token) {
       setWsUrl(null); setEnabled(false); setConfigured(false);
+      setProvider(null); setMissingEnvVar(null);
       return null;
     }
     try {
@@ -48,9 +53,12 @@ export function ClawProvider({ children }: { children: ReactNode }) {
       setWsUrl(info.ws_url);
       setEnabled(info.enabled);
       setConfigured(info.configured);
+      setProvider(info.provider ?? null);
+      setMissingEnvVar(info.missing_env_var ?? null);
       return info;
     } catch {
       setWsUrl(null); setEnabled(false); setConfigured(false);
+      setProvider(null); setMissingEnvVar(null);
       return null;
     }
   };
@@ -90,14 +98,14 @@ export function ClawProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ClawContextValue>(
     () => ({
-      token, wsUrl, enabled, configured, sessionId,
+      token, wsUrl, enabled, configured, provider, missingEnvVar, sessionId,
       chat: chatRef.current,
       setToken, clearToken,
       startNewSession, sendUserMessage, refreshInfo,
     }),
     // chatVersion ensures context consumers re-render when messages/typing change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [token, wsUrl, enabled, configured, sessionId, chatVersion],
+    [token, wsUrl, enabled, configured, provider, missingEnvVar, sessionId, chatVersion],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

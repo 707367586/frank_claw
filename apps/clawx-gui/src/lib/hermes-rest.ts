@@ -2,6 +2,8 @@ export interface HermesInfo {
   configured: boolean;
   enabled: boolean;
   ws_url: string;
+  provider: string | null;
+  missing_env_var: string | null;
 }
 
 export interface SessionSummary {

@@ -7,6 +7,8 @@ vi.mock("../hermes-rest", () => ({
     configured: true,
     enabled: true,
     ws_url: "ws://localhost:18800/hermes/ws",
+    provider: null,
+    missing_env_var: null,
   }),
 }));
 
