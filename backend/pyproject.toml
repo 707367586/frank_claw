@@ -9,10 +9,14 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "anyio>=4.6",
-    # hermes-agent as a git dependency; pin a SHA once you verify the first
-    # working commit in Task 3.1. Use `main` for now during bootstrap.
-    "hermes-agent @ git+https://github.com/NousResearch/hermes-agent@main",
+    # hermes-agent is vendored under vendor/hermes_agent/. Source imported
+    # from NousResearch/hermes-agent @ 7fc1e91 (0.10.0). See
+    # [tool.uv.sources] below for the path mapping.
+    "hermes-agent",
 ]
+
+[tool.uv.sources]
+hermes-agent = { path = "vendor/hermes_agent", editable = true }
 
 [project.optional-dependencies]
 dev = [
