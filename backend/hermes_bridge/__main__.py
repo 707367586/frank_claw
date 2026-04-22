@@ -9,7 +9,7 @@ import uvicorn
 
 from .app import create_app
 from .bridge.hermes_factory import make_real_runner
-from .config import Settings, get_settings
+from .config import Settings, get_settings, load_hermes_env
 from .ws import chat as ws_chat
 
 
@@ -34,6 +34,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--webroot", type=Path, default=None)
     p.add_argument("--no-browser", action="store_true")
     args = p.parse_args(argv)
+
+    load_hermes_env()
 
     settings = get_settings()
     if args.port is not None:

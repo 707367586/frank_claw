@@ -21,3 +21,19 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     return Settings()  # reads env on each call; fine for a local dev tool
+
+
+def load_hermes_env() -> None:
+    """Populate os.environ from ~/.hermes/.env if present. Shell env wins.
+
+    Called from __main__ before create_app() so AIAgent sees provider keys.
+    No-op when the file does not exist (lets tests and first-run work).
+    """
+    import os
+
+    from dotenv import load_dotenv
+
+    home = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+    env_file = home / ".env"
+    if env_file.exists():
+        load_dotenv(env_file, override=False)
