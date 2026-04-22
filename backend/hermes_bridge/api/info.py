@@ -36,8 +36,10 @@ def _load_provider(home: Path) -> str | None:
         if not path.exists():
             continue
         try:
-            doc = yaml.safe_load(path.read_text()) or {}
+            doc = yaml.safe_load(path.read_text())
         except yaml.YAMLError:
+            return None
+        if not isinstance(doc, dict):
             return None
         provider = doc.get("provider")
         return provider if isinstance(provider, str) else None

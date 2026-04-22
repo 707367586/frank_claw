@@ -1,7 +1,6 @@
 """info.check_configured must verify YAML + matching env var, not just file presence."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -51,3 +50,19 @@ def test_anthropic_provider_reads_anthropic_key(
     monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key")
     monkeypatch.delenv("GLM_API_KEY", raising=False)
     assert check_configured(_settings(tmp_path)) is True
+
+
+def test_list_shaped_yaml_returns_false(tmp_path: Path) -> None:
+    # Top-level list is technically valid YAML but not our config schema.
+    (tmp_path / "config.yaml").write_text("- a\n- b\n")
+    assert check_configured(_settings(tmp_path)) is False
+
+
+def test_scalar_yaml_returns_false(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("hello\n")
+    assert check_configured(_settings(tmp_path)) is False
+
+
+def test_malformed_yaml_returns_false(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("provider: [unclosed\n")
+    assert check_configured(_settings(tmp_path)) is False
