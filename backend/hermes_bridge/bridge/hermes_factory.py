@@ -14,6 +14,7 @@ Symbols depended upon — see `backend-py/docs/hermes-internal-surface.md`:
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from typing import Any, AsyncIterator
 
@@ -23,6 +24,26 @@ from ..config import Settings
 from .hermes_runner import HermesAgentLike, HermesRunner
 
 log = logging.getLogger(__name__)
+
+# Env vars whose values must never appear in any string surfaced to the
+# client (error messages, chat transcripts). Keep in sync with
+# hermes_bridge.api.info._PROVIDER_ENV_VARS. httpx and some SDKs occasionally
+# echo the Authorization header into exception strings — this is the last
+# line of defense.
+_SECRET_ENV_VARS = (
+    "GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY",
+    "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
+    "OPENAI_API_KEY", "DEEPSEEK_API_KEY",
+)
+
+
+def _redact_secrets(s: str) -> str:
+    """Replace any known provider-key value in `s` with ``***``."""
+    for name in _SECRET_ENV_VARS:
+        v = os.environ.get(name)
+        if v and v in s:
+            s = s.replace(v, "***")
+    return s
 
 
 class _HermesAgentAdapter:
@@ -60,9 +81,14 @@ class _HermesAgentAdapter:
             if isinstance(raw_model, dict):
                 model = str(raw_model.get("default") or "")
                 requested_provider = raw_model.get("provider") or cfg.get("provider")
-            else:
-                model = str(raw_model or "")
+            elif isinstance(raw_model, str) or raw_model is None:
+                model = raw_model or ""
                 requested_provider = cfg.get("provider")
+            else:
+                raise TypeError(
+                    f"config.yaml `model` must be str or dict, got "
+                    f"{type(raw_model).__name__}"
+                )
             runtime = resolve_runtime_provider(requested=requested_provider)
             self._agent = AIAgent(
                 session_id=session_id,
@@ -74,7 +100,7 @@ class _HermesAgentAdapter:
                 api_mode=runtime.get("api_mode"),
             )
         except Exception as exc:  # pragma: no cover — env-dependent
-            self._init_error = f"{exc.__class__.__name__}: {exc}"
+            self._init_error = _redact_secrets(f"{exc.__class__.__name__}: {exc}")
             log.warning("hermes AIAgent init failed: %s", self._init_error)
 
     async def run_turn(self, user_content: str) -> AsyncIterator[dict[str, Any]]:
@@ -97,7 +123,9 @@ class _HermesAgentAdapter:
         try:
             text = await anyio.to_thread.run_sync(_blocking_chat)
         except Exception as exc:
-            raise RuntimeError(f"hermes chat failed: {exc}") from exc
+            raise RuntimeError(
+                _redact_secrets(f"hermes chat failed: {exc}")
+            ) from exc
 
         yield {
             "kind": "final",
