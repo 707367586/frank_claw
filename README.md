@@ -14,13 +14,17 @@ For the architecture + decision history see [`docs/arch/architecture.md`](./docs
 ## Quick start
 
 ```bash
-# 1. Install JS deps
+# 1. Install JS deps + Python deps, and run the interactive bootstrap.
 pnpm install
-
-# 2. One-time: install backend Python deps + bootstrap ~/.hermes/
 pnpm dev:backend:setup
+# The bootstrap will:
+#   - prompt for a provider (default: Zhipu GLM — press Enter)
+#   - prompt for a model (default: glm-4.5-flash — press Enter)
+#   - prompt for your API key (paste; input is hidden)
+#     -> for Zhipu, use your key from https://open.bigmodel.cn/
+# It writes ~/.hermes/config.yaml and ~/.hermes/.env (mode 0600).
 
-# 3. Start everything
+# 2. Start everything.
 pnpm dev
 ```
 
@@ -28,13 +32,9 @@ This brings up:
 - **Backend** (`hermes_bridge`, Python/FastAPI/uvicorn) on `http://127.0.0.1:18800`
 - **Frontend** (Vite dev server) on `http://localhost:1420`
 
-Open `http://localhost:1420`.
+Open `http://localhost:1420`. On first load the backend prints `dashboardToken: <…>` to its stdout — paste it into the Settings page once; after that it's in `localStorage`.
 
-### First-visit auth
-
-The backend prints `dashboardToken: <…>` to its stdout. Copy it; the app's Settings page prompts you once; after that it lives in `localStorage`.
-
-If `~/.hermes/config.yaml` lacks a usable provider, `/api/hermes/info` returns `enabled: false` and ChatPage instructs you to fix config.
+If the provider env var is missing, ChatPage shows "Hermes is not ready: `GLM_API_KEY` is not set" — re-run `pnpm dev:backend:setup` (or hand-edit `~/.hermes/.env`) and restart the backend.
 
 ## Repo layout
 
