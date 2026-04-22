@@ -21,7 +21,13 @@ def test_info_returns_shape(monkeypatch):
     r = c.get("/api/hermes/info", headers={"Authorization": "Bearer t"})
     assert r.status_code == 200
     body = r.json()
-    assert set(body.keys()) == {"configured", "enabled", "ws_url"}
+    assert set(body.keys()) == {
+        "configured",
+        "enabled",
+        "ws_url",
+        "provider",
+        "missing_env_var",
+    }
     assert body["configured"] is True
     assert body["enabled"] is True
     assert body["ws_url"] == "ws://127.0.0.1:18800/hermes/ws"
