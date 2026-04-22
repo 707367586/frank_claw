@@ -43,12 +43,36 @@ class _HermesAgentAdapter:
             # Import lazily — hermes-agent pulls in a lot of transitive deps
             # and keeping the import out of module scope lets hermes_bridge
             # load even if hermes-agent has a broken import chain.
+            from hermes_cli.config import load_config  # type: ignore[import-not-found]
+            from hermes_cli.runtime_provider import (  # type: ignore[import-not-found]
+                resolve_runtime_provider,
+            )
             from run_agent import AIAgent  # type: ignore[import-not-found]
 
-            # Let hermes resolve provider/model from ~/.hermes/config.yaml
-            # and environment credentials. We only pin the session id so
-            # SessionDB keyed history can be shared with TUI/CLI users.
-            self._agent = AIAgent(session_id=session_id, quiet_mode=True)
+            # Load model/provider from ~/.hermes/config.yaml, then resolve
+            # credentials the same way hermes-agent's own CLI does. Without
+            # this AIAgent is constructed with model="" and the upstream
+            # API rejects the request ("model code cannot be empty").
+            cfg = load_config()
+            # load_config() expands `model: <name>` into a dict
+            # {"default": <name>, "provider": <provider>}. Handle both shapes.
+            raw_model = cfg.get("model")
+            if isinstance(raw_model, dict):
+                model = str(raw_model.get("default") or "")
+                requested_provider = raw_model.get("provider") or cfg.get("provider")
+            else:
+                model = str(raw_model or "")
+                requested_provider = cfg.get("provider")
+            runtime = resolve_runtime_provider(requested=requested_provider)
+            self._agent = AIAgent(
+                session_id=session_id,
+                quiet_mode=True,
+                model=model,
+                provider=runtime.get("provider"),
+                base_url=runtime.get("base_url"),
+                api_key=runtime.get("api_key"),
+                api_mode=runtime.get("api_mode"),
+            )
         except Exception as exc:  # pragma: no cover — env-dependent
             self._init_error = f"{exc.__class__.__name__}: {exc}"
             log.warning("hermes AIAgent init failed: %s", self._init_error)

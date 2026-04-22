@@ -27,7 +27,7 @@ class ProviderChoice:
 
 
 PROVIDERS: list[ProviderChoice] = [
-    ProviderChoice("zai", "Zhipu GLM (智谱 / Z.AI)", "GLM_API_KEY", "glm-4.5-flash"),
+    ProviderChoice("zai", "Zhipu GLM (智谱 / Z.AI)", "GLM_API_KEY", "glm-4.5-air"),
     ProviderChoice("anthropic", "Anthropic Claude", "ANTHROPIC_API_KEY", "claude-3-5-sonnet-latest"),
     ProviderChoice("openrouter", "OpenRouter (aggregator)", "OPENROUTER_API_KEY", "anthropic/claude-3.5-sonnet"),
     ProviderChoice("openai", "OpenAI", "OPENAI_API_KEY", "gpt-4o-mini"),

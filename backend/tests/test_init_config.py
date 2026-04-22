@@ -35,7 +35,7 @@ def test_bootstrap_writes_zhipu_config_and_env(tmp_path: Path, monkeypatch: pyte
     assert rc == 0
     cfg = (home / "config.yaml").read_text()
     assert "provider: zai" in cfg
-    assert "model: glm-4.5-flash" in cfg  # default
+    assert "model: glm-4.5-air" in cfg  # default
 
     env = (home / ".env").read_text()
     assert "GLM_API_KEY=test-glm-key-not-real" in env
