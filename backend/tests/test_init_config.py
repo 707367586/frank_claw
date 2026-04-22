@@ -1,7 +1,6 @@
 """init_config.py: interactive bootstrap for ~/.hermes/{config.yaml,.env}."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
