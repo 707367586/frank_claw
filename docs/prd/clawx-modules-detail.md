@@ -1,7 +1,9 @@
 # ClawX 功能模块详细 PRD
 
-**基于:** frank_claw.pen 设计稿（19 页）+ clawx-v3.0.md 总览 PRD
+**基于:** `clawx-v3.0.md` 总览 PRD
 **日期:** 2026-04-13
+
+> **状态**：本文档是产品愿景层面的模块拆解（22 模块 / v0.1–v1.0+ 路线图）。当前 v6.0 架构基线仅实现了其中一小部分（对话、渠道管理的只读面、设置）——详见 `docs/arch/architecture.md` 与 `docs/prd/clawx-v3.0.md` 顶部的实施状态表。
 
 ---
 
