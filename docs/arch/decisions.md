@@ -1,10 +1,22 @@
 # ClawX 架构决策记录 (ADR)
 
-**日期:** 2026-03-18 | **对应架构:** v4.2
+**首条日期:** 2026-03-18 | **当前基线:** v6.0（ADR-038） | **说明:** 累积 ADR 日志，保留历史阶段决策。
 
 ---
 
-## ADR-001: Rust Workspace 分层单体
+## 当前状态一览
+
+| 状态 | ADR | 备注 |
+|---|---|---|
+| **生效** | ADR-038 | v6.0 hermes_bridge 基线（ADR-039 社交层扩展路线已规划，当前文档中暂未落地） |
+| **历史保留（非冲突）** | ADR-006, ADR-007, ADR-012, ADR-013, ADR-021, ADR-022, ADR-026 | 仍可作为当前设计的决策背景；已在 ADR-037 v2 中显式保留 |
+| **已被替代** | ADR-001..005, ADR-008..011, ADR-014..020, ADR-023..025, ADR-027..035, ADR-036, ADR-037 | 描述的是 v4.2 Rust workspace 或 v5.0 picoclaw-era；内容保留以供回溯，但与当前实现冲突时以 ADR-038 为准 |
+
+具体替代关系见 ADR-037 的 `SUPERSEDES` 列表（被 ADR-038 继承）与 ADR-038 的 "影响" 小节。
+
+---
+
+## ADR-001: Rust Workspace 分层单体 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 使用 Rust Workspace 的分层单体，而不是微服务。
 
@@ -12,7 +24,7 @@
 
 ---
 
-## ADR-002: SQLite 主数据库
+## ADR-002: SQLite 主数据库 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** SQLite (`sqlx`) 作为主数据库，存储在 `~/.clawx/db/clawx.db`。
 
@@ -20,7 +32,7 @@
 
 ---
 
-## ADR-003: service-owned control plane
+## ADR-003: service-owned control plane *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 生产路径上只有 `clawx-service` 持有 runtime；GUI / CLI 统一走本地控制平面。
 
@@ -28,7 +40,7 @@
 
 ---
 
-## ADR-004: 共享 `clawx-controlplane-client`
+## ADR-004: 共享 `clawx-controlplane-client` *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** `clawx-desktop`（Tauri app）与 `clawx-cli` 共用 `clawx-controlplane-client`，不直接依赖 runtime。
 
@@ -38,7 +50,7 @@
 
 ---
 
-## ADR-005: launchd 为唯一守护者
+## ADR-005: launchd 为唯一守护者 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 使用 macOS `launchd` 守护 `clawx-service`，不再单独设计 `clawx-daemon` crate / 进程。健康自检功能内置于 `clawx-service`。
 
@@ -62,7 +74,7 @@
 
 ---
 
-## ADR-008: TOML 配置
+## ADR-008: TOML 配置 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 使用 TOML 作为本地配置格式。
 
@@ -70,7 +82,7 @@
 
 ---
 
-## ADR-009: 两层持久化记忆
+## ADR-009: 两层持久化记忆 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** v0.1 的 `clawx-memory` 只实现 Agent Memory 与 User Memory 两层持久化长期记忆。
 
@@ -78,7 +90,7 @@
 
 ---
 
-## ADR-010: Working Context 属于 Runtime
+## ADR-010: Working Context 属于 Runtime *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 对话上下文窗口（Working Memory）、压缩和 Prompt 组装留在 `clawx-runtime`，不计入 `clawx-memory` 持久化记忆层。Runtime 调用 clawx-memory 获取记忆召回结果，但上下文组装由 Runtime 负责。
 
@@ -86,7 +98,7 @@
 
 ---
 
-## ADR-011: v0.1 记忆检索用 SQLite + FTS5
+## ADR-011: v0.1 记忆检索用 SQLite + FTS5 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** v0.1 的记忆检索采用 SQLite + FTS5，不为记忆再建一套 Qdrant + Tantivy。v0.2 可根据检索效果评估是否升级为 Qdrant 向量检索。
 
@@ -110,7 +122,7 @@
 
 ---
 
-## ADR-014: 三级安全执行模型
+## ADR-014: 三级安全执行模型 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** T1 (WASM) → T2 (受限子进程) → T3 (原生宿主)。注意：T1/T2/T3 指执行级别，不同于安全架构的 L1-L12 防御层。
 
@@ -118,7 +130,7 @@
 
 ---
 
-## ADR-015: Security 为最终边界
+## ADR-015: Security 为最终边界 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** `clawx-security` 拥有最终裁决权；Trust 若引入，最早在 v0.2 启用。
 
@@ -126,7 +138,7 @@
 
 ---
 
-## ADR-016: Keychain + 宿主边界注入
+## ADR-016: Keychain + 宿主边界注入 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 密钥存 macOS Keychain，运行时在宿主 HTTP 边界注入。
 
@@ -134,7 +146,7 @@
 
 ---
 
-## ADR-017: 哈希链审计日志
+## ADR-017: 哈希链审计日志 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 审计日志使用 JSONL 追加写入 + SHA-256 哈希链。
 
@@ -142,7 +154,7 @@
 
 ---
 
-## ADR-018: 工作区边界内的 Vault
+## ADR-018: 工作区边界内的 Vault *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 版本化与回滚只承诺 `workspace` 边界内文件。
 
@@ -150,7 +162,7 @@
 
 ---
 
-## ADR-019: HAL 封装 macOS 能力
+## ADR-019: HAL 封装 macOS 能力 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** `clawx-hal` 统一封装 FSEvents、Keychain、Notification 等宿主能力。
 
@@ -158,7 +170,7 @@
 
 ---
 
-## ADR-020: 自主性分阶段引入
+## ADR-020: 自主性分阶段引入 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** v0.1 只有 Runtime 基础护栏（最大迭代次数、Token 预算限制）；v0.2 再引入 ReAct 循环、自我反思、信任渐进等受控自主能力。
 
@@ -182,7 +194,7 @@
 
 ---
 
-## ADR-023: 三层记忆概念模型
+## ADR-023: 三层记忆概念模型 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 记忆系统采用三层概念模型（Working + Short-Term + Long-Term），其中 Long-Term 按作用域分为 Agent Memory 和 User Memory。Working Memory 由 Runtime 实现（见 ADR-010），Short-Term Memory 和 Long-Term Memory 由 clawx-memory 实现。
 
@@ -190,7 +202,7 @@
 
 ---
 
-## ADR-024: 记忆提取采用 LLM 辅助
+## ADR-024: 记忆提取采用 LLM 辅助 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 以 LLM 辅助提取为主，信号词规则检测为辅助触发器。每 3 轮对话触发一次隐式提取。
 
@@ -202,7 +214,7 @@
 
 ---
 
-## ADR-025: SQLite 为记忆 Source of Truth
+## ADR-025: SQLite 为记忆 Source of Truth *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** SQLite 为记忆的 Source of Truth。v0.1 仅用 SQLite + FTS5（见 ADR-011）；v0.2 引入 Qdrant 向量检索后，Qdrant 为可重建的检索索引，写入时双写，Qdrant 数据丢失时可从 SQLite 重建。
 
@@ -218,7 +230,7 @@
 
 ---
 
-## ADR-027: 自主性能力集成在 clawx-runtime 而非独立 Crate
+## ADR-027: 自主性能力集成在 clawx-runtime 而非独立 Crate *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 自主性引擎 (ReAct, Planner, Reflection 等) 作为 `clawx-runtime` 的子模块实现，而非独立 Crate。
 
@@ -226,7 +238,7 @@
 
 ---
 
-## ADR-028: ReAct 为基础推理模式
+## ADR-028: ReAct 为基础推理模式 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** ReAct 为基础推理循环，Planner 作为 ReAct 内部的可选增强。复杂任务先 Plan 再在每步中 ReAct，简单任务直接 ReAct。
 
@@ -234,7 +246,7 @@
 
 ---
 
-## ADR-029: Computer Use 优先使用 Accessibility API
+## ADR-029: Computer Use 优先使用 Accessibility API *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 三层操作策略：API/Script → Accessibility API → Vision (截屏+LLM)，优先使用高效精确的方法。
 
@@ -242,7 +254,7 @@
 
 ---
 
-## ADR-030: 信任档案按 Agent 独立计算，并按能力向量细分
+## ADR-030: 信任档案按 Agent 独立计算，并按能力向量细分 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 权限信任以 Agent 为边界独立维护，但不再只用一个单一全局等级，而是按 `knowledge_read / workspace_write / external_send / memory_write / shell_exec` 等能力维度维护信任向量。
 
@@ -250,7 +262,7 @@
 
 ---
 
-## ADR-031: 预测性主动基于记忆系统
+## ADR-031: 预测性主动基于记忆系统 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 行为模式作为特殊类型的 Agent Memory 存储在现有记忆系统中，而非独立行为分析库。
 
@@ -258,7 +270,7 @@
 
 ---
 
-## ADR-032: 主动任务统一采用 Task / Trigger / Run 三段模型
+## ADR-032: 主动任务统一采用 Task / Trigger / Run 三段模型 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 主动任务不再使用单表 `scheduled_tasks` 的轻量模型，而统一采用：
 
@@ -272,7 +284,7 @@
 
 ---
 
-## ADR-033: clawx-service 作为自主性的组合根
+## ADR-033: clawx-service 作为自主性的组合根 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** `clawx-runtime` 的自主性模块通过 `clawx-types` 中定义的 `TaskRegistryPort`、`NotificationPort` 等 Trait 与外部交互；`clawx-service` 作为组合根负责装配 `clawx-scheduler`、`clawx-channel`、`clawx-hal` 的具体实现。
 
@@ -280,7 +292,7 @@
 
 ---
 
-## ADR-034: 主动通知必须经过 Attention Policy
+## ADR-034: 主动通知必须经过 Attention Policy *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 主动任务执行完成后，不默认“有结果就通知”，而必须先经过独立的 Attention Policy 判断是否立即推送、汇总后推送、仅记录历史或直接抑制。
 
@@ -288,7 +300,7 @@
 
 ---
 
-## ADR-035: Tauri 替代 SwiftUI 作为桌面 GUI 方案
+## ADR-035: Tauri 替代 SwiftUI 作为桌面 GUI 方案 *(SUPERSEDED by ADR-037/ADR-038)*
 
 **决策:** 使用 Tauri v2 + React + TypeScript 替代原定的 SwiftUI + UniFFI 方案构建桌面 GUI。删除 `clawx-ffi` crate，新建 `apps/clawx-desktop`（Tauri app）。
 
@@ -313,7 +325,7 @@
 
 ---
 
-## ADR-037: 2026-04-20 删除 Rust 后端，将 picoclaw 源码 vendor 进本仓库作为新后端
+## ADR-037: 2026-04-20 删除 Rust 后端，将 picoclaw 源码 vendor 进本仓库作为新后端 *(SUPERSEDED by ADR-038)*
 
 **状态:** Accepted — SUPERSEDES：ADR-001 / 002 / 003 / 004 / 005 / 008 / 009 / 010 / 011 / 014 / 015 / 016 / 017 / 018 / 019 / 020 / 023 / 024 / 025 / 027 / 028 / 029 / 030 / 031 / 032 / 033 / 034 / 035 / 036。仅 ADR-006 / 007 / 012 / 013 / 021 / 022 / 026 作为历史记录保留。
 
@@ -370,7 +382,7 @@ ClawX 自研 Rust 后端在 v0.3 完成了"agentic tool-use loop Phase 1"（ADR-
 
 ---
 
-## ADR-036: 2026-04-19 Agentic tool-use loop (Phase 1)
+## ADR-036: 2026-04-19 Agentic tool-use loop (Phase 1) *(SUPERSEDED by ADR-037 → ADR-038)*
 
 > **状态:** SUPERSEDED by ADR-037。Rust 实现已删除，tool-use 由 picoclaw 内部承担，前端不再可见。本 ADR 作为历史记录保留。
 
