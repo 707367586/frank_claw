@@ -124,6 +124,8 @@ frank_claw/
 | SettingsPage | 粘贴 / 清除 dashboard token、刷新连接信息 |
 | 本地配置 | LLM provider、MCP、toolset 在 `~/.hermes/` 由 hermes-agent 负责 |
 
+> v6.0 当前交付只覆盖本地 hermes 会话与连接器管理。通讯录、群聊、Relay、远程 Agent 社交不属于当前基线能力；若继续推进，需作为 `hermes_bridge` 扩展实现，见 ADR-039 与 `docs/superpowers/specs/2026-03-30-agent-social-network-design.md`。
+
 ---
 
 ## 5. 部署形态
@@ -196,7 +198,7 @@ hermes-agent 以 **固定 git ref** 的方式在 `backend/pyproject.toml` 中引
 3. 跑前端 `pnpm test` 通过
 4. 人工烟测一次端到端聊天
 
-如果某次上游升级破坏了 `hermes_bridge/bridge/hermes_runner.py` 内对 hermes 内部 API 的调用，修 `hermes_runner.py`，其它文件不动 —— 这是把所有"上游脆弱点"集中在一处的刻意设计。
+如果某次上游升级破坏了 `hermes_bridge/bridge/hermes_factory.py` 内对 hermes 内部 API 的调用，修 `hermes_factory.py`，其它文件不动 —— 这是把所有"上游脆弱点"集中在一处的刻意设计。
 
 ---
 

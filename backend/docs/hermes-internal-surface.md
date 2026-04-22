@@ -99,7 +99,7 @@ Gateway-specific `gateway.session.SessionStore` (at `gateway/session.py:550`) wr
   - `validate_toolset(name) -> bool`
   - `create_custom_toolset(...)` — build a new toolset.
   - `get_toolset_info(name) -> Dict[str, Any]`
-- **Enable/disable persistence**: there is no single `enable(name)` / `disable(name)` function in `toolsets.py`. Enablement is a **per-AIAgent-construction** argument (`enabled_toolsets=` / `disabled_toolsets=` in `AIAgent.__init__`). For `PUT /api/tools/:name/state` we therefore maintain our own persistence at `~/.hermes/hermes_bridge_tools.json` and apply it on next `AIAgent` construction. Any mismatch with hermes's own configuration layer needs revisiting if hermes adds a programmatic toggle.
+- **Enable/disable persistence**: there is no single `enable(name)` / `disable(name)` function in `toolsets.py`. Enablement is a **per-AIAgent-construction** argument (`enabled_toolsets=` / `disabled_toolsets=` in `AIAgent.__init__`). For `PUT /api/tools/:name/state` we therefore maintain our own persistence at `~/.hermes/toolsets.json` (constant `ToolService.FILENAME`) and apply it on next `AIAgent` construction. Any mismatch with hermes's own configuration layer needs revisiting if hermes adds a programmatic toggle.
 - **"blocked" status**: a toolset referencing a plugin/tool that cannot load (`ImportError`, missing API key, missing MCP server) should appear as `blocked`. Derive by inspecting `get_toolset(name)` and attempting lazy resolution; if it raises or the underlying `tools/` module flags a missing dep, mark blocked + populate `reason_code`.
 
 ## Skills
@@ -120,10 +120,11 @@ Gateway-specific `gateway.session.SessionStore` (at `gateway/session.py:550`) wr
 
 Every symbol above is one we must re-verify on any hermes-agent SHA bump. If upstream renames any of these, touch ONLY:
 
-- `hermes_bridge/bridge/hermes_runner.py` (the AIAgent wrapper)
-- `hermes_bridge/bridge/hermes_factory.py` (only file importing hermes internals)
-- `hermes_bridge/bridge/session_store.py` (wraps SessionDB)
-- `hermes_bridge/bridge/skill_service.py` (wraps scan_skill_commands + filesystem)
-- `hermes_bridge/bridge/tool_service.py` (wraps get_all_toolsets + local state)
+- `hermes_bridge/bridge/hermes_factory.py` — the **one** file that imports hermes-agent internals (`run_agent.AIAgent`). Absorbs upstream symbol renames.
+- `hermes_bridge/bridge/session_store.py` — if the `state.db` schema changes (raw SQL, no hermes imports).
+- `hermes_bridge/bridge/skill_service.py` — if `~/.hermes/skills/` layout changes (filesystem only, no hermes imports).
+- `hermes_bridge/bridge/tool_service.py` — if we later replace the JSON file (`~/.hermes/toolsets.json`) with hermes's programmatic toolset API.
+
+`hermes_bridge/bridge/hermes_runner.py` is **not** on this list — it's the protocol-neutral event adapter that depends only on the internal `HermesAgentLike` Protocol, not hermes itself.
 
 Nothing else in the adapter should need to change.

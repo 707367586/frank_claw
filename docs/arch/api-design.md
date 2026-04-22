@@ -213,12 +213,13 @@ WS：上表 `error` 帧；同时可能以 close code 非-1000 断线（客户端
 | `backend/hermes_bridge/ws/chat.py` | `/hermes/ws` 端点（子协议鉴权 + 心跳 + 广播） |
 | `backend/hermes_bridge/auth.py` | Bearer dep + WS 子协议校验 |
 | `backend/hermes_bridge/api/*.py` | REST handler 薄层（仅 HTTP；逻辑在 bridge/） |
-| `backend/hermes_bridge/bridge/hermes_runner.py` | 唯一导入 hermes-agent 内部符号的文件；升级时先改这里 |
+| `backend/hermes_bridge/bridge/hermes_runner.py` | 协议中立的 turn 事件适配器（`typing.start` → `message.create` → `typing.stop`），不导入 hermes 内部 |
+| `backend/hermes_bridge/bridge/hermes_factory.py` | **唯一**导入 hermes-agent 内部符号（`run_agent.AIAgent` 等）的文件；升级时先改这里 |
 
 ---
 
 ## 7. 演进策略
 
 - 协议字段任何变化都同步 `apps/clawx-gui/src/lib/hermes-types.ts` + 对应 vitest 协议合约测试 + `backend/tests/test_ws_protocol.py`。
-- hermes-agent 升级：改 `pyproject.toml` 的 git SHA，`uv lock`，跑 `uv run pytest` + `pnpm test`。冲突只改 `hermes_runner.py`。
+- hermes-agent 升级：改 `pyproject.toml` 的 git SHA，`uv lock`，跑 `uv run pytest` + `pnpm test`。冲突只改 `hermes_factory.py`。
 - 协议破坏性变更：本仓库 minor 抬升，同步记入 `docs/arch/decisions.md`。
