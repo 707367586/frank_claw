@@ -4,8 +4,27 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Iterator
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _restore_environ() -> "Iterator[None]":
+    """Snapshot os.environ before each test and restore it after.
+
+    The loader under test calls load_dotenv which writes directly into
+    os.environ — monkeypatch cannot undo those writes, so tests would leak
+    state into each other without this fixture.
+    """
+    import os
+
+    snapshot = dict(os.environ)
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(snapshot)
 
 
 def test_load_hermes_env_populates_os_environ(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
