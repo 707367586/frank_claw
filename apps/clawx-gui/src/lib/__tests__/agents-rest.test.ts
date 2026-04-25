@@ -6,6 +6,7 @@ import {
   rotateAgentSession,
   listToolsets,
 } from "../agents-rest";
+import { HermesApiError } from "../hermes-rest";
 
 const mockFetch = vi.fn();
 
@@ -71,5 +72,18 @@ describe("agents-rest", () => {
     mockFetch.mockResolvedValueOnce(ok([{ name: "web", description: "", tools: [] }]));
     const out = await listToolsets("T");
     expect(out[0].name).toBe("web");
+  });
+
+  it("throws HermesApiError on non-2xx with backend message", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      json: async () => ({ message: "agent not found" }),
+    } as Response);
+    const err = await deleteAgent("nope", "T").catch((e) => e);
+    expect(err).toBeInstanceOf(HermesApiError);
+    expect(err.status).toBe(404);
+    expect(err.message).toBe("agent not found");
   });
 });
