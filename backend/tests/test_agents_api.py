@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
-
 from fastapi.testclient import TestClient
 
 from hermes_bridge.api import agents as agents_api
