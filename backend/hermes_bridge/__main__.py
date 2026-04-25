@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
 
     app = create_app(settings)
     ws_chat.bind_runner_factory(
-        lambda session_id, _agent_id: make_real_runner(settings, session_id)
+        lambda session_id, agent_id: make_real_runner(settings, session_id, agent_id)
     )
 
     uvicorn.run(app, host=settings.host, port=settings.port, log_level=settings.log_level.lower())
