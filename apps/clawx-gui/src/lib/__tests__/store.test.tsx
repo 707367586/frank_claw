@@ -35,6 +35,9 @@ vi.mock("../hermes-rest", async () => {
 
 beforeEach(() => {
   localStorage.clear();
+  // NOTE: agents-rest mocks defined at module scope share state across tests.
+  // Tests in this file do not assert call counts, so this is acceptable.
+  // Add vi.clearAllMocks() + per-test mock setup if call-count assertions are added later.
 });
 
 describe("ClawProvider / useClaw", () => {

@@ -92,3 +92,40 @@ describe("HermesSocket", () => {
     expect(FakeWS.instances).toHaveLength(1);
   });
 });
+
+describe("HermesSocket — agent_id", () => {
+  it("includes agent_id in the URL when connect(agentId) is called", () => {
+    const onMessage = vi.fn();
+    const s = new HermesSocket({
+      wsBase: "ws://h/hermes/ws",
+      sessionId: "S1",
+      token: "T",
+      onMessage,
+    });
+    s.connect("a1");
+    const ws = FakeWS.instances[FakeWS.instances.length - 1]!;
+    expect(ws.url).toBe("ws://h/hermes/ws?session_id=S1&agent_id=a1");
+    s.close();
+  });
+
+  it("preserves agent_id across reconnects", () => {
+    vi.useFakeTimers();
+    const onMessage = vi.fn();
+    const s = new HermesSocket({
+      wsBase: "ws://h/hermes/ws",
+      sessionId: "S1",
+      token: "T",
+      onMessage,
+    });
+    s.connect("a1");
+    const first = FakeWS.instances[FakeWS.instances.length - 1]!;
+    expect(first.url).toContain("agent_id=a1");
+    // simulate server-initiated close (not user-initiated)
+    first.onclose?.({ code: 1006, reason: "" });
+    vi.advanceTimersByTime(1000); // pass through the reconnect backoff
+    const second = FakeWS.instances[FakeWS.instances.length - 1]!;
+    expect(second.url).toContain("agent_id=a1");
+    s.close();
+    vi.useRealTimers();
+  });
+});

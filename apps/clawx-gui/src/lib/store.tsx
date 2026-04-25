@@ -84,10 +84,18 @@ export function ClawProvider({ children }: { children: ReactNode }) {
   // Bootstrap agents + toolsets after token resolves
   useEffect(() => {
     if (!token) { setAgents([]); setToolsets([]); return; }
+    let stale = false;
     (async () => {
-      try { setAgents(await listAgents(token)); } catch { /* ignore */ }
-      try { setToolsets(await listToolsets(token)); } catch { /* ignore */ }
+      try {
+        const a = await listAgents(token);
+        if (!stale) setAgents(a);
+      } catch { /* ignore */ }
+      try {
+        const t = await listToolsets(token);
+        if (!stale) setToolsets(t);
+      } catch { /* ignore */ }
     })();
+    return () => { stale = true; };
   }, [token]);
 
   // Auto-select first agent if none selected (or selected one disappeared)
@@ -171,12 +179,22 @@ export function ClawProvider({ children }: { children: ReactNode }) {
   const deleteAgentFn = useCallback(async (id: string) => {
     if (!token) return;
     await restDeleteAgent(id, token);
+    // Use the closure-captured `agents` snapshot to compute next state
+    // synchronously — avoids side effects inside a setState updater.
     setAgents((prev) => {
       const next = prev.filter((a) => a.id !== id);
-      if (activeAgentId === id) setActiveAgentId(next[0]?.id ?? null);
       return next;
     });
-  }, [token, activeAgentId]);
+    setActiveAgentId((prevActive) => {
+      if (prevActive !== id) return prevActive;
+      // We don't have access to the filtered agents here, so capture from
+      // the agents state value at the time this callback was created.
+      // The `agents` closure value already reflects the pre-delete list;
+      // filter it to find the fallback.
+      const remaining = agents.filter((a) => a.id !== id);
+      return remaining[0]?.id ?? null;
+    });
+  }, [token, activeAgentId, agents]);
 
   const newConversation = useCallback(async () => {
     if (!token || !activeAgent) return;
@@ -190,8 +208,9 @@ export function ClawProvider({ children }: { children: ReactNode }) {
   }, [token, activeAgent]);
 
   const sendUserMessage = (content: string) => {
+    if (!sockRef.current) return;
     const reqId = chatRef.current.addUser(content);
-    sockRef.current?.send({ type: "message.send", id: reqId, payload: { content } });
+    sockRef.current.send({ type: "message.send", id: reqId, payload: { content } });
   };
 
   const value = useMemo<ClawContextValue>(
