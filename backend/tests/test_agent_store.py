@@ -11,7 +11,9 @@ from hermes_bridge.config import Settings
 
 
 def _settings(tmp_path: Path) -> Settings:
-    return Settings(hermes_home=tmp_path)
+    # Settings's HERMES_HOME alias makes Pyright unable to see the field-name kwarg
+    # even with populate_by_name=True; runtime accepts it.
+    return Settings(hermes_home=tmp_path)  # type: ignore[call-arg]
 
 
 def test_list_returns_seeded_agents_when_file_missing(tmp_path):
