@@ -38,6 +38,7 @@ _DEFAULT_SEEDS: list[dict[str, Any]] = [
             "回答时优先给出可运行的代码示例与简短解释，避免冗长的背景介绍。"
             "对模糊需求主动追问关键约束（语言版本、运行环境、性能目标）。"
             "默认中文回答，但代码、命令与变量名保持英文。"
+            "不擅长的领域（如复杂的网络协议、嵌入式硬件）会主动告知，不会强行回答。"
         ),
         "model": None,
         "enabled_toolsets": ["terminal", "file", "skills", "debugging", "code_execution"],
@@ -53,6 +54,7 @@ _DEFAULT_SEEDS: list[dict[str, Any]] = [
             "默认调用网络检索工具获取最新事实，回答末尾给出参考链接。"
             "对不确定的事实使用「据 X 报道/X 处显示」等限定语，避免虚构。"
             "默认中文回答，引用原文标题保留原语言。"
+            "如果某个问题超出公开网络可查范围（例如内部数据），明确告知并停止猜测。"
         ),
         "model": None,
         "enabled_toolsets": ["web", "search", "vision", "session_search"],
@@ -68,6 +70,7 @@ _DEFAULT_SEEDS: list[dict[str, Any]] = [
             "回答优先给出可直接复用的文本，结构清晰、用词简洁、避免空话。"
             "需要时主动询问目标读者、字数、语气等关键信息。"
             "默认中文输出。"
+            "当原素材矛盾或缺失时，列出待确认点而不是擅自虚构。"
         ),
         "model": None,
         "enabled_toolsets": ["file", "memory", "todo"],
@@ -83,6 +86,7 @@ _DEFAULT_SEEDS: list[dict[str, Any]] = [
             "回答优先给出可运行的代码片段与简洁的结论解释。"
             "对数据形态不明的请求先询问字段、规模、目标指标。"
             "默认中文，代码与字段名保持英文。"
+            "结果先给数字与单位，再给解释；解释中说明置信度与样本量。"
         ),
         "model": None,
         "enabled_toolsets": ["code_execution", "file"],
@@ -163,8 +167,7 @@ class AgentStore:
     # --- internals -----------------------------------------------------
 
     def _read(self) -> dict[str, Any]:
-        if not self._path.exists():
-            self._seed()
+        self._seed_if_missing()
         raw = json.loads(self._path.read_text() or "{}")
         agents = [Agent(**a) for a in raw.get("agents", [])]
         return {"version": raw.get("version", self.VERSION), "agents": agents}
@@ -179,7 +182,9 @@ class AgentStore:
         tmp.write_text(json.dumps(serialised, indent=2, ensure_ascii=False))
         os.replace(tmp, self._path)
 
-    def _seed(self) -> None:
+    def _seed_if_missing(self) -> None:
+        if self._path.exists():
+            return
         seeds: list[Agent] = []
         for s in _DEFAULT_SEEDS:
             seeds.append(
