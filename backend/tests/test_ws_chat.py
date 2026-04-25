@@ -16,8 +16,10 @@ class FakeAgent:
         yield {"kind": "final", "id": "m1", "text": f"hi-{user_content}"}
 
 
-def _install_fake_runner(monkeypatch):
-    def factory(session_id: str) -> HermesRunner:
+def _install_fake_runner(monkeypatch, captured: list | None = None):
+    def factory(session_id: str, agent_id: str | None) -> HermesRunner:
+        if captured is not None:
+            captured.append((session_id, agent_id))
         return HermesRunner(agent=FakeAgent(), session_id=session_id)
 
     monkeypatch.setattr(chat_mod, "make_runner", factory)
@@ -62,3 +64,33 @@ def test_ws_ping_pong(monkeypatch):
         frame = ws.receive_json()
         assert frame["type"] == "pong"
         assert frame["id"] == "nonce"
+
+
+def test_ws_passes_agent_id_to_factory(monkeypatch):
+    captured: list = []
+    _install_fake_runner(monkeypatch, captured)
+    monkeypatch.setenv("HERMES_LAUNCHER_TOKEN", "t")
+    app = create_app(Settings())
+    c = TestClient(app)
+    with c.websocket_connect(
+        "/hermes/ws?session_id=s1&agent_id=code",
+        subprotocols=["token.t"],
+    ) as ws:
+        ws.send_json({"type": "ping", "id": "x"})
+        ws.receive_json()
+    assert captured == [("s1", "code")]
+
+
+def test_ws_agent_id_optional(monkeypatch):
+    captured: list = []
+    _install_fake_runner(monkeypatch, captured)
+    monkeypatch.setenv("HERMES_LAUNCHER_TOKEN", "t")
+    app = create_app(Settings())
+    c = TestClient(app)
+    with c.websocket_connect(
+        "/hermes/ws?session_id=s1",
+        subprotocols=["token.t"],
+    ) as ws:
+        ws.send_json({"type": "ping", "id": "x"})
+        ws.receive_json()
+    assert captured == [("s1", None)]

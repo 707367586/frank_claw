@@ -15,14 +15,14 @@ log = logging.getLogger(__name__)
 
 
 # Replaced with a real factory in Task 3.5; tests monkey-patch this.
-def make_runner(session_id: str) -> HermesRunner:
+def make_runner(session_id: str, agent_id: str | None) -> HermesRunner:
     raise RuntimeError(
         "make_runner not configured; override via monkeypatch in tests or call "
         "hermes_bridge.ws.chat.bind_runner_factory(...) at startup"
     )
 
 
-def bind_runner_factory(factory: Callable[[str], HermesRunner]) -> None:
+def bind_runner_factory(factory: Callable[[str, str | None], HermesRunner]) -> None:
     global make_runner
     make_runner = factory  # type: ignore[assignment]
 
@@ -60,7 +60,11 @@ def make_router(settings: Settings) -> APIRouter:
     r = APIRouter()
 
     @r.websocket("/hermes/ws")
-    async def ws_chat(websocket: WebSocket, session_id: str = Query(...)) -> None:
+    async def ws_chat(
+        websocket: WebSocket,
+        session_id: str = Query(...),
+        agent_id: str | None = Query(default=None),
+    ) -> None:
         requested = list(websocket.scope.get("subprotocols") or [])
         matched = verify_ws_subprotocol(requested, settings)
         if not matched:
@@ -68,7 +72,7 @@ def make_router(settings: Settings) -> APIRouter:
             return
         await websocket.accept(subprotocol=matched)
 
-        runner = make_runner(session_id)
+        runner = make_runner(session_id, agent_id)
         try:
             while True:
                 raw = await websocket.receive_json()
