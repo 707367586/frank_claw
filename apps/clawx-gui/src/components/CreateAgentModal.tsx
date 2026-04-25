@@ -50,9 +50,13 @@ export default function CreateAgentModal({ open, onClose }: Props) {
 
   const allToolsetNames = useMemo(() => (claw.toolsets ?? []).map((t) => t.name), [claw.toolsets]);
 
+  const customModelMissing =
+    modelMode === "custom" && modelPreset === "自定义..." && !modelCustom.trim();
+
   const errors = {
     name: !name.trim() ? "请输入名称" : null,
     systemPrompt: !systemPrompt.trim() ? "请输入 System Prompt" : null,
+    model: customModelMissing ? "请输入自定义模型名" : null,
   };
 
   function pickedModel(): string | null {
@@ -62,7 +66,7 @@ export default function CreateAgentModal({ open, onClose }: Props) {
 
   async function submit() {
     setShowErrors(true);
-    if (errors.name || errors.systemPrompt) return;
+    if (errors.name || errors.systemPrompt || errors.model) return;
     setSubmitErr(null);
     setBusy(true);
     try {
@@ -73,10 +77,7 @@ export default function CreateAgentModal({ open, onClose }: Props) {
         icon,
         system_prompt: systemPrompt,
         model: pickedModel(),
-        enabled_toolsets:
-          enabledToolsets.size === allToolsetNames.length
-            ? allToolsetNames
-            : allToolsetNames.filter((n) => enabledToolsets.has(n)),
+        enabled_toolsets: allToolsetNames.filter((n) => enabledToolsets.has(n)),
       });
       onClose();
     } catch (e) {
@@ -197,13 +198,18 @@ export default function CreateAgentModal({ open, onClose }: Props) {
                 <option value="自定义...">自定义...</option>
               </select>
               {modelPreset === "自定义..." && (
-                <Input
-                  size="sm"
-                  aria-label="自定义模型名"
-                  placeholder="例如 anthropic/claude-sonnet-4-6"
-                  value={modelCustom}
-                  onChange={(e) => setModelCustom(e.target.value)}
-                />
+                <>
+                  <Input
+                    size="sm"
+                    aria-label="自定义模型名"
+                    placeholder="例如 anthropic/claude-sonnet-4-6"
+                    value={modelCustom}
+                    onChange={(e) => setModelCustom(e.target.value)}
+                  />
+                  {showErrors && errors.model && (
+                    <em className="create-agent__err">{errors.model}</em>
+                  )}
+                </>
               )}
             </>
           )}
