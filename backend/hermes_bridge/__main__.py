@@ -52,7 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"dashboardToken: {token}", flush=True)
 
     app = create_app(settings)
-    ws_chat.bind_runner_factory(lambda session_id: make_real_runner(settings, session_id))
+    ws_chat.bind_runner_factory(
+        lambda session_id, _agent_id: make_real_runner(settings, session_id)
+    )
 
     uvicorn.run(app, host=settings.host, port=settings.port, log_level=settings.log_level.lower())
     return 0
