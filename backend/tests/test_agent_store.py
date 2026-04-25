@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,7 @@ from hermes_bridge.config import Settings
 
 
 def _settings(tmp_path: Path) -> Settings:
-    return Settings(hermes_home=tmp_path)  # type: ignore[arg-type]
+    return Settings(hermes_home=tmp_path)
 
 
 def test_list_returns_seeded_agents_when_file_missing(tmp_path):
@@ -19,6 +20,9 @@ def test_list_returns_seeded_agents_when_file_missing(tmp_path):
     assert {a.id for a in out} == {"code", "research", "writing", "data"}
     # seed write occurred
     assert (tmp_path / "agents.json").exists()
+    # workspace dirs are created lazily on first turn, NOT at seed time
+    for sid in ("code", "research", "writing", "data"):
+        assert not (tmp_path / "workspaces" / sid).exists()
 
 
 def test_create_assigns_id_and_session_and_workspace(tmp_path):
@@ -104,10 +108,9 @@ def test_atomic_write_does_not_corrupt_file_on_partial_failure(tmp_path, monkeyp
     store.list()  # write seeds
     original = (tmp_path / "agents.json").read_text()
     # Force os.replace to fail; the file on disk must remain valid.
-    import os
     real_replace = os.replace
 
-    def boom(*a, **kw):
+    def boom(*_a, **_kw):
         raise RuntimeError("disk full")
 
     monkeypatch.setattr(os, "replace", boom)
