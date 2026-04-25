@@ -4,15 +4,38 @@ import { MemoryRouter } from "react-router-dom";
 import ChatPage from "../ChatPage";
 import { ClawProvider } from "../../lib/store";
 
-vi.mock("../../lib/hermes-rest", () => ({
-  fetchHermesInfo: vi.fn().mockResolvedValue({
-    configured: true,
-    enabled: true,
-    ws_url: "ws://localhost:18800/hermes/ws",
-    provider: null,
-    missing_env_var: null,
-  }),
+vi.mock("../../lib/agents-rest", () => ({
+  listAgents: vi.fn().mockResolvedValue([
+    {
+      id: "a1", name: "default", description: "", color: "#5749F4", icon: "Bot",
+      system_prompt: "", model: null, enabled_toolsets: [],
+      workspace_dir: "/tmp/a1", current_session_id: "sid-1", created_at: 1,
+    },
+  ]),
+  listToolsets: vi.fn().mockResolvedValue([]),
+  createAgent: vi.fn(),
+  deleteAgent: vi.fn().mockResolvedValue(undefined),
+  rotateAgentSession: vi.fn().mockResolvedValue({ session_id: "sid-new" }),
 }));
+
+vi.mock("../../lib/hermes-rest", async () => {
+  const actual = await vi.importActual<typeof import("../../lib/hermes-rest")>("../../lib/hermes-rest");
+  return {
+    ...actual,
+    fetchHermesInfo: vi.fn().mockResolvedValue({
+      configured: true,
+      enabled: true,
+      ws_url: "ws://localhost:18800/hermes/ws",
+      provider: null,
+      missing_env_var: null,
+    }),
+    getSession: vi.fn().mockResolvedValue({
+      id: "sid-1", title: "", preview: "", message_count: 0,
+      created: 0, updated: 0, summary: "",
+      messages: [],
+    }),
+  };
+});
 
 class FakeWS {
   static last: FakeWS;
@@ -45,8 +68,8 @@ describe("ChatPage", () => {
         </ClawProvider>
       </MemoryRouter>,
     );
-    // Wait for token-bootstrap useEffects to settle
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    // Wait for token-bootstrap useEffects to settle (agents + wsUrl + WS connect)
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(screen.getByTestId("chat-welcome")).toBeInTheDocument();
 
     const input = screen.getByRole("textbox");

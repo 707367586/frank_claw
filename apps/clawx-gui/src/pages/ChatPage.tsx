@@ -1,15 +1,14 @@
-import { useEffect } from "react";
+import { useState } from "react";
 import ChatInput from "../components/ChatInput";
 import ChatWelcome from "../components/ChatWelcome";
 import MessageBubble from "../components/MessageBubble";
 import { useClaw } from "../lib/store";
 
+type ChatTab = "chat" | "artifacts";
+
 export default function ChatPage() {
   const claw = useClaw();
-
-  useEffect(() => {
-    if (!claw.sessionId && claw.enabled) claw.startNewSession();
-  }, [claw.enabled, claw.sessionId]);
+  const [tab, setTab] = useState<ChatTab>("chat");
 
   if (!claw.token) {
     return (
@@ -43,8 +42,33 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
+      <header className="chat-page__head">
+        <nav className="page-tabs" role="tablist" aria-label="主区视图">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "chat"}
+            className={`page-tabs__trigger ${tab === "chat" ? "is-active" : ""}`}
+            onClick={() => setTab("chat")}
+          >
+            对话
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "artifacts"}
+            className={`page-tabs__trigger ${tab === "artifacts" ? "is-active" : ""}`}
+            onClick={() => setTab("artifacts")}
+          >
+            产物
+          </button>
+        </nav>
+      </header>
+
       <div className="chat-page__body">
-        {messages.length === 0 ? (
+        {tab === "artifacts" ? (
+          <div className="chat-page__placeholder">暂无产物</div>
+        ) : messages.length === 0 ? (
           <ChatWelcome />
         ) : (
           messages.map((m) => (
@@ -56,7 +80,7 @@ export default function ChatPage() {
             />
           ))
         )}
-        {typing && (
+        {tab === "chat" && typing && (
           <div className="msg msg--assistant" data-testid="typing">
             <div className="msg__bubble msg__bubble--streaming">
               <span className="typing-indicator" aria-label="正在生成">
@@ -68,6 +92,7 @@ export default function ChatPage() {
           </div>
         )}
       </div>
+
       <footer className="chat-page__foot">
         <ChatInput onSubmit={(text) => claw.sendUserMessage(text)} />
       </footer>

@@ -19,12 +19,16 @@ export class HermesSocket {
   private reconnectMs = RECONNECT_INITIAL_MS;
   private closedByUser = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private agentId: string | null = null;
 
   constructor(private readonly opts: HermesSocketOptions) {}
 
-  connect(): void {
+  connect(agentId?: string | null): void {
     this.closedByUser = false;
-    const url = `${this.opts.wsBase}?session_id=${encodeURIComponent(this.opts.sessionId)}`;
+    if (agentId !== undefined) this.agentId = agentId ?? null;
+    const params = new URLSearchParams({ session_id: this.opts.sessionId });
+    if (this.agentId) params.set("agent_id", this.agentId);
+    const url = `${this.opts.wsBase}?${params.toString()}`;
     const ws = new WebSocket(url, [`token.${this.opts.token}`]);
     this.ws = ws;
     ws.onopen = () => {
