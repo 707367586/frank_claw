@@ -153,4 +153,25 @@ describe("ChatPage", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(screen.getByText(/init_config\.py/)).toBeInTheDocument();
   });
+
+  it("shows '新对话' button next to tabs", async () => {
+    const { fetchHermesInfo } = await import("../../lib/hermes-rest");
+    (fetchHermesInfo as unknown as { mockResolvedValue: (v: unknown) => void })
+      .mockResolvedValue({
+        configured: true,
+        enabled: true,
+        ws_url: "ws://localhost:18800/hermes/ws",
+        provider: null,
+        missing_env_var: null,
+      });
+    render(
+      <MemoryRouter>
+        <ClawProvider>
+          <ChatPage />
+        </ClawProvider>
+      </MemoryRouter>,
+    );
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(screen.getByRole("button", { name: /新对话/ })).toBeInTheDocument();
+  });
 });

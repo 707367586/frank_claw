@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { RotateCcw } from "lucide-react";
 import ChatInput from "../components/ChatInput";
 import ChatWelcome from "../components/ChatWelcome";
 import MessageBubble from "../components/MessageBubble";
+import IconButton from "../components/ui/IconButton";
 import { useClaw } from "../lib/store";
 
 type ChatTab = "chat" | "artifacts";
@@ -17,7 +19,6 @@ export default function ChatPage() {
       </div>
     );
   }
-
   if (!claw.enabled) {
     if (claw.missingEnvVar) {
       return (
@@ -38,38 +39,49 @@ export default function ChatPage() {
     );
   }
 
+  if (!claw.activeAgent) {
+    return <div className="empty-state">请在左侧选择一个 Agent。</div>;
+  }
+
   const { messages, typing } = claw.chat;
+
+  function newConv() {
+    if (window.confirm("开启新对话？当前会话历史将不再显示（仍保留在后端）。")) {
+      void claw.newConversation();
+    }
+  }
 
   return (
     <div className="chat-page">
       <header className="chat-page__head">
         <nav className="page-tabs" role="tablist" aria-label="主区视图">
           <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "chat"}
+            type="button" role="tab" aria-selected={tab === "chat"}
             className={`page-tabs__trigger ${tab === "chat" ? "is-active" : ""}`}
             onClick={() => setTab("chat")}
-          >
-            对话
-          </button>
+          >对话</button>
           <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "artifacts"}
+            type="button" role="tab" aria-selected={tab === "artifacts"}
             className={`page-tabs__trigger ${tab === "artifacts" ? "is-active" : ""}`}
             onClick={() => setTab("artifacts")}
-          >
-            产物
-          </button>
+          >产物</button>
         </nav>
+        <span className="chat-page__head-spacer" />
+        <IconButton
+          icon={<RotateCcw size={16} />}
+          aria-label="新对话"
+          title="新对话"
+          variant="ghost"
+          size="sm"
+          onClick={newConv}
+        />
       </header>
 
       <div className="chat-page__body">
         {tab === "artifacts" ? (
           <div className="chat-page__placeholder">暂无产物</div>
         ) : messages.length === 0 ? (
-          <ChatWelcome />
+          <ChatWelcome agent={claw.activeAgent} />
         ) : (
           messages.map((m) => (
             <MessageBubble
@@ -84,9 +96,7 @@ export default function ChatPage() {
           <div className="msg msg--assistant" data-testid="typing">
             <div className="msg__bubble msg__bubble--streaming">
               <span className="typing-indicator" aria-label="正在生成">
-                <span />
-                <span />
-                <span />
+                <span /><span /><span />
               </span>
             </div>
           </div>
