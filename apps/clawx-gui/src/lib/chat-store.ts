@@ -3,6 +3,7 @@ import type {
   HermesMessage,
   MessageCreatePayload,
 } from "./hermes-types";
+import type { SessionMessage } from "./hermes-rest";
 
 export interface ChatMessage {
   id: string;
@@ -75,6 +76,21 @@ export class ChatStore {
       }
       default: return;
     }
+    this.emit();
+  }
+
+  replaceMessages(serverMsgs: SessionMessage[]): void {
+    this.messages = serverMsgs
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({
+        id: crypto.randomUUID(),
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        thought: false,
+        ts: Date.now(),
+      }));
+    this.typing = false;
+    this.lastError = null;
     this.emit();
   }
 }

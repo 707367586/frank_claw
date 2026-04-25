@@ -54,3 +54,31 @@ describe("ChatStore", () => {
     expect(calls).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("replaceMessages", () => {
+  it("maps server messages to ChatMessage[] and resets typing/error", () => {
+    const s = new ChatStore();
+    s.typing = true;
+    s.lastError = { code: "x", message: "y" };
+    s.addUser("old");
+    s.replaceMessages([
+      { role: "user", content: "u1" },
+      { role: "assistant", content: "a1" },
+    ]);
+    expect(s.messages).toHaveLength(2);
+    expect(s.messages[0].role).toBe("user");
+    expect(s.messages[0].content).toBe("u1");
+    expect(s.messages[1].role).toBe("assistant");
+    expect(s.typing).toBe(false);
+    expect(s.lastError).toBeNull();
+  });
+
+  it("ignores 'system' role from history", () => {
+    const s = new ChatStore();
+    s.replaceMessages([
+      { role: "system", content: "ignored" },
+      { role: "user", content: "ok" },
+    ]);
+    expect(s.messages.map((m) => m.role)).toEqual(["user"]);
+  });
+});
