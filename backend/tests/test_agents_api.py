@@ -151,3 +151,40 @@ def test_rotate_session_404(monkeypatch):
     c, _ = _client(monkeypatch)
     r = c.post("/api/agents/nope/sessions", headers={"Authorization": "Bearer t"})
     assert r.status_code == 404
+
+
+def test_create_requires_auth(monkeypatch):
+    c, _ = _client(monkeypatch)
+    assert c.post("/api/agents", json={}).status_code == 401
+
+
+def test_delete_requires_auth(monkeypatch):
+    c, _ = _client(monkeypatch)
+    assert c.delete("/api/agents/aid").status_code == 401
+
+
+def test_rotate_requires_auth(monkeypatch):
+    c, _ = _client(monkeypatch)
+    assert c.post("/api/agents/aid/sessions").status_code == 401
+
+
+def test_create_validates_system_prompt(monkeypatch):
+    c, _ = _client(monkeypatch)
+    r = c.post(
+        "/api/agents",
+        headers={"Authorization": "Bearer t"},
+        json={"name": "x", "description": "", "color": "#5749F4", "icon": "Bot",
+              "system_prompt": "", "model": None, "enabled_toolsets": []},
+    )
+    assert r.status_code == 422
+
+
+def test_create_validates_icon(monkeypatch):
+    c, _ = _client(monkeypatch)
+    r = c.post(
+        "/api/agents",
+        headers={"Authorization": "Bearer t"},
+        json={"name": "x", "description": "", "color": "#5749F4", "icon": "",
+              "system_prompt": "p", "model": None, "enabled_toolsets": []},
+    )
+    assert r.status_code == 422
