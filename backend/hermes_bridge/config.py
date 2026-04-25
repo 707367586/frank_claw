@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     webroot: Path | None = Field(default=None, alias="HERMES_BRIDGE_WEBROOT")
     no_browser: bool = Field(default=True, alias="HERMES_BRIDGE_NO_BROWSER")
 
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="", extra="ignore", populate_by_name=True)
 
 
 def get_settings() -> Settings:
