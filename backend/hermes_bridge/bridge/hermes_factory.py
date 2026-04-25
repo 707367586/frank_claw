@@ -1,9 +1,28 @@
-# backend/hermes_bridge/bridge/hermes_factory.py
+"""The ONLY file in hermes_bridge that imports hermes-agent's internals.
+
+On upstream version bumps, this file absorbs the change. All other code
+depends on `HermesRunner` + `HermesAgentLike` protocol which is stable.
+
+T5 (persona-agents) added two test seams here:
+- `_resolve_aiagent_class()` — lazy `from run_agent import AIAgent`.
+- `_resolve_runtime_kwargs(settings)` — reads `~/.hermes/config.yaml` and
+  resolves provider/api_key via hermes_cli.runtime_provider.
+
+Per-agent persona is injected by passing an `Agent` record into the adapter's
+constructor: `model` overrides the global, `system_prompt` becomes
+`ephemeral_system_prompt`, and `enabled_toolsets` becomes the AIAgent
+whitelist (empty list → None so hermes uses defaults). The agent's
+`workspace_dir` is set into `os.environ["TERMINAL_CWD"]` for the duration
+of each turn — this is process-global, so v1 only supports one in-flight
+turn at a time (see spec §7).
+"""
+
 from __future__ import annotations
 
 import logging
 import os
 import uuid
+from pathlib import Path
 from typing import Any, AsyncIterator
 
 import anyio
@@ -14,6 +33,12 @@ from .hermes_runner import HermesAgentLike, HermesRunner
 
 log = logging.getLogger(__name__)
 
+
+# Env vars whose values must never appear in any string surfaced to the
+# client (error messages, chat transcripts). Keep in sync with
+# hermes_bridge.api.info._PROVIDER_ENV_VARS. httpx and some SDKs occasionally
+# echo the Authorization header into exception strings — this is the last
+# line of defense.
 _SECRET_ENV_VARS = (
     "GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY",
     "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
@@ -65,6 +90,17 @@ def _resolve_runtime_kwargs(settings: Settings) -> dict[str, Any]:
 
 
 class _HermesAgentAdapter:
+    """Adapts hermes-agent's sync AIAgent.chat() into our async iterator API.
+
+    Behaviour:
+      - When `agent` is None: build AIAgent from the global config; no
+        TERMINAL_CWD swap.
+      - When `agent` is given: override `model` (if non-empty), inject
+        `ephemeral_system_prompt`, and apply `enabled_toolsets` whitelist
+        (empty list → None). Each turn temporarily sets
+        `TERMINAL_CWD=agent.workspace_dir` and restores it in `finally`.
+    """
+
     def __init__(
         self,
         settings: Settings,
@@ -111,20 +147,22 @@ class _HermesAgentAdapter:
             return
 
         prev_cwd = os.environ.get("TERMINAL_CWD")
-        if self._workspace_dir:
-            from pathlib import Path
-            Path(self._workspace_dir).mkdir(parents=True, exist_ok=True)
-            os.environ["TERMINAL_CWD"] = self._workspace_dir
+        cwd_changed = False
 
         def _blocking_chat() -> str:
             return self._llm.chat(user_content)  # type: ignore[union-attr]
 
         try:
-            text = await anyio.to_thread.run_sync(_blocking_chat)
-        except Exception as exc:
-            raise RuntimeError(_redact_secrets(f"hermes chat failed: {exc}")) from exc
-        finally:
             if self._workspace_dir:
+                Path(self._workspace_dir).mkdir(parents=True, exist_ok=True)
+                os.environ["TERMINAL_CWD"] = self._workspace_dir
+                cwd_changed = True
+            try:
+                text = await anyio.to_thread.run_sync(_blocking_chat)
+            except Exception as exc:
+                raise RuntimeError(_redact_secrets(f"hermes chat failed: {exc}")) from exc
+        finally:
+            if cwd_changed:
                 if prev_cwd is None:
                     os.environ.pop("TERMINAL_CWD", None)
                 else:
@@ -143,9 +181,12 @@ def make_real_runner(
     agent_id: str | None = None,
 ) -> HermesRunner:
     agent: Agent | None = None
-    if agent_id:
-        agent = AgentStore(settings).get(agent_id)
-        if agent is None:
-            log.warning("agent_id %s not found; falling back to global config", agent_id)
+    if agent_id is not None:
+        if not agent_id:
+            log.warning("agent_id is empty string; falling back to global config")
+        else:
+            agent = AgentStore(settings).get(agent_id)
+            if agent is None:
+                log.warning("agent_id %r not found; falling back to global config", agent_id)
     adapter: HermesAgentLike = _HermesAgentAdapter(settings, session_id, agent=agent)
     return HermesRunner(agent=adapter, session_id=session_id)
