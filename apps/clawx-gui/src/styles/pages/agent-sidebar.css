@@ -38,6 +38,28 @@
 }
 .agent-item:hover { background: var(--sidebar-accent); color: var(--foreground); }
 .agent-item.is-active { background: var(--sidebar-accent); color: var(--foreground); }
+.agent-item__avatar {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; flex-shrink: 0;
+}
 .agent-item__text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .agent-item__name { color: var(--foreground); font-size: 13px; font-weight: 500; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-item__status { color: var(--muted-foreground); font-size: 11px; line-height: 1.4; }
+.agent-item__status { color: var(--muted-foreground); font-size: 11px; line-height: 1.4; display: inline-flex; align-items: center; gap: 6px; }
+.agent-item__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-foreground); flex-shrink: 0; }
+.agent-item__dot--running { background: var(--success); }
+.agent-item__dot--indexing { background: var(--warning); }
+.agent-item__dot--idle { background: var(--muted-foreground); }
+
+.agent-item-wrap { position: relative; }
+.agent-item-wrap .agent-item { width: 100%; }
+.agent-item__delete {
+  display: none;
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px;
+  align-items: center; justify-content: center;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+}
+.agent-item-wrap:hover .agent-item__delete { display: inline-flex; }
+.agent-item__delete:hover { background: var(--destructive); color: var(--destructive-foreground); }
