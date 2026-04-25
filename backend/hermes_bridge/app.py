@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from .api import agents as agents_api
 from .api import info as info_api
 from .api import sessions as sessions_api
 from .api import skills as skills_api
@@ -22,5 +23,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(sessions_api.make_router(s))
     app.include_router(skills_api.make_router(s))
     app.include_router(tools_api.make_router(s))
+    app.include_router(agents_api.make_router(s))
     app.include_router(ws_chat.make_router(s))
     return app
