@@ -41,14 +41,17 @@ export default function CreateAgentModal({ open, onClose }: Props) {
   const [modelPreset, setModelPreset] = useState<string>(MODEL_PRESETS[0]);
   const [modelCustom, setModelCustom] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [enabledToolsets, setEnabledToolsets] = useState<Set<string>>(
-    () => new Set((claw.toolsets ?? []).map((t) => t.name)),
-  );
+  // null means "user hasn't touched it; mirror current claw.toolsets"
+  const [enabledToolsets, setEnabledToolsets] = useState<Set<string> | null>(null);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
 
   const allToolsetNames = useMemo(() => (claw.toolsets ?? []).map((t) => t.name), [claw.toolsets]);
+  const effectiveEnabledToolsets = useMemo<Set<string>>(
+    () => enabledToolsets ?? new Set(allToolsetNames),
+    [enabledToolsets, allToolsetNames],
+  );
 
   const customModelMissing =
     modelMode === "custom" && modelPreset === "自定义..." && !modelCustom.trim();
@@ -77,7 +80,7 @@ export default function CreateAgentModal({ open, onClose }: Props) {
         icon,
         system_prompt: systemPrompt,
         model: pickedModel(),
-        enabled_toolsets: allToolsetNames.filter((n) => enabledToolsets.has(n)),
+        enabled_toolsets: allToolsetNames.filter((n) => effectiveEnabledToolsets.has(n)),
       });
       onClose();
     } catch (e) {
@@ -233,10 +236,11 @@ export default function CreateAgentModal({ open, onClose }: Props) {
                 <label key={t.name} className="create-agent__toolset">
                   <input
                     type="checkbox"
-                    checked={enabledToolsets.has(t.name)}
+                    checked={effectiveEnabledToolsets.has(t.name)}
                     onChange={(e) => {
                       setEnabledToolsets((prev) => {
-                        const next = new Set(prev);
+                        const base = prev ?? new Set(allToolsetNames);
+                        const next = new Set(base);
                         if (e.target.checked) next.add(t.name);
                         else next.delete(t.name);
                         return next;
