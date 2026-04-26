@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-import { Plus, Zap, ArrowUp } from "lucide-react";
+import { Plus, Zap, ArrowUp, ChevronDown } from "lucide-react";
 import IconButton from "./ui/IconButton";
 
 interface ChatInputProps {
@@ -41,6 +41,10 @@ export default function ChatInput({ onSubmit, disabled }: ChatInputProps) {
         placeholder="输入任何问题..."
         disabled={disabled}
       />
+      <button className="chat-input__model" type="button" aria-label="选择模型">
+        <span>Sonnet 4.6</span>
+        <ChevronDown size={12} />
+      </button>
       <IconButton
         icon={<ArrowUp size={16} />}
         aria-label="发送"
